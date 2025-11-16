@@ -1,0 +1,13 @@
+torch --index-url https://download.pytorch.org/whl/cu118
+torchvision --index-url https://download.pytorch.org/whl/cu118
+ultralytics>=8.0.0
+opencv-python-headless>=4.5.0
+numpy>=1.21.0
+gtts>=2.2.0
+pydub>=0.25.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.20.0
+websockets>=10.0
+python-multipart
+Pillow>=8.0.0
+requests>=2.25.0

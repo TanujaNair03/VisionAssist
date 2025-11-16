@@ -33,7 +33,7 @@ from pydub import AudioSegment
 
 # HTTP Server
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse
 import uvicorn
 
 # ============================================================================
@@ -41,7 +41,7 @@ import uvicorn
 # ============================================================================
 
 # Model Configuration
-YOLO_MODEL_PATH = './yolov8n_optuna_best.pt'
+YOLO_MODEL_PATH = './yolov8n.pt'
 CONFIDENCE_THRESHOLD = 0.4
 FOCAL_LENGTH_PIXELS = 1000
 
@@ -1439,6 +1439,10 @@ async def websocket_status():
         "camera_active": camera_stream is not None and camera_stream.is_streaming if camera_stream else False
     }
 
+
+@app.get("/")
+def index():
+    return HTMLResponse(open("websocket_camera_client.html", "r", encoding="utf-8").read())
 # ============================================================================
 # MAIN SERVER ENTRY POINT
 # ============================================================================
