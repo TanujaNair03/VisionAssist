@@ -290,3 +290,41 @@ Camera Stopped:
   "message": "Streaming error: <details>"
 }
 ```
+---
+
+# 4. Role of `websocket_camera_client.html`
+
+This HTML file:
+
+### ✔ Connects to WebSocket endpoint
+
+`ws://<SERVER-IP>/ws/camera/stream`
+
+### ✔ Allows:
+
+* Live camera streaming from user’s webcam
+* Uploading images
+* Showing annotated frames returned by server
+* Playing audio alerts (TTS) from server
+* Displaying FPS, alerts, detections
+
+### ✔ Sends:
+
+* Frames (base64)
+* Camera control commands
+* Stats requests
+
+### ✔ Receives:
+
+* Annotated image frames
+* Audio alerts (mp3 base64 → played in browser)
+* Detection counts
+* Alerts
+* Stream status
+
+This file is placed in `/opt/vision-assist/` and served by FastAPI at:
+
+```
+http://SERVER/websocket_camera_client.html
+```
+
