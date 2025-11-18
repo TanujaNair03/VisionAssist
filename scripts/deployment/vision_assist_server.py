@@ -43,20 +43,46 @@ import uvicorn
 # Model Configuration
 YOLO_MODEL_PATH = './yolov8n.pt'
 CONFIDENCE_THRESHOLD = 0.4
-FOCAL_LENGTH_PIXELS = 1000
+FOCAL_LENGTH_PIXELS = 762.99
 
 # Object Detection & Filtering
 NOISY_CLASSES_TO_IGNORE = [
     # Accessories
-    24, 25, 26, 27, 28,  # backpack, umbrella, handbag, tie, suitcase
+    24, # backpack
+    25, # umbrella
+    26, # handbag
+    27, # tie
+    # Sports
+    31, # snowboard
+    34, # baseball bat
+    35, # baseball glove
+    36, # skateboard
+    37, # surfboard
+    38, # tennis racket
     # Kitchen & Food
-    41, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
-    # Electronics
-    62, 63, 64, 65, 66, 67,  # tv, laptop, mouse, remote, keyboard, cell phone
+    39, # bottle
+    40, # wine glass
+    41, # cup
+    44, # spoon
+    45, # bowl
+    46, # banana
+    47, # apple
+    48, # sandwich
+    49, # orange
+    50, # broccoli
+    51, # carrot
+    52, # hot dog
+    53, # pizza
+    54, # donut
+    55, # cake
     # Other
-    73, 74, 75, 77, 78, 79  # book, clock, vase, teddy bear, hair drier, toothbrush
+    73, # book
+    74, # clock
+    75, # vase
+    77, # teddy bear
+    78, # hair drier
+    79, # toothbrush
 ]
-
 # Known object heights (meters) for distance estimation
 KNOWN_OBJECT_HEIGHTS = {
     0: 1.7,  # person
@@ -75,7 +101,7 @@ ALERT_DISTANCE_OBJECT = 12.0  # meters
 
 # Motion Detection
 HISTORY_FRAMES = 15
-MOVEMENT_THRESHOLD_PIXELS = 25
+MOVEMENT_THRESHOLD_PIXELS = 5
 DIRECTION_THRESHOLD_RATIO = 0.3
 
 # Alert Management
@@ -95,7 +121,7 @@ NARRATION_MAX_OBJECTS = 3  # Maximum objects to mention in narration
 
 # Server Configuration
 SERVER_HOST = '0.0.0.0'
-SERVER_PORT = 80
+SERVER_PORT = 8000
 
 # WebSocket Streaming Configuration
 STREAMING_FPS = 30

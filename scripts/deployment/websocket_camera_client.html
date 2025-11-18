@@ -314,58 +314,46 @@
             uploadBtn.disabled = !connected;
         }
 
-        function connectWebSocket() {
-            if (websocket) return;
+function connectWebSocket() {
+    if (websocket) return;
 
-            addLogEntry('Connecting to WebSocket...', 'info');
+    addLogEntry('Connecting to WebSocket...', 'info');
 
-            // Get server URL from input field
-            const serverInput = document.getElementById('serverUrl');
-            let serverUrl = serverInput.value.trim();
+    // ALWAYS use WSS + your domain
+    const wsUrl = `wss://4.188.81.64.nip.io/ws/camera/stream`;
+    addLogEntry(`Connecting to: ${wsUrl}`, 'info');
 
-            // Validate and normalize URL
-            if (!serverUrl) {
-                serverUrl = 'ws://localhost:8000';
-                serverInput.value = serverUrl;
-            }
+    try {
+        websocket = new WebSocket(wsUrl);
+    } catch (e) {
+        addLogEntry(`WebSocket initialization error: ${e}`, 'error');
+        return;
+    }
 
-            // Clean up the URL - remove any existing protocol and /ws/camera/stream
-            serverUrl = serverUrl.replace(/^(https?|wss?):\/\//, '');
-            serverUrl = serverUrl.replace(/\/ws\/camera\/stream.*$/, '');
-            serverUrl = serverUrl.replace(/\/$/, ''); // Remove trailing slash
+    websocket.onopen = function () {
+        addLogEntry('WebSocket connected successfully!', 'success');
+        updateConnectionStatus(true);
+    };
 
-            // Add ws:// protocol
-            serverUrl = 'ws://' + serverUrl;
-            serverInput.value = serverUrl;
-
-            // Construct WebSocket URL
-            const wsUrl = `${serverUrl}/ws/camera/stream`;
-            addLogEntry(`Connecting to: ${wsUrl}`, 'info');
-
-            websocket = new WebSocket(wsUrl);
-
-            websocket.onopen = function () {
-                addLogEntry('WebSocket connected successfully!', 'success');
-                updateConnectionStatus(true);
-            };
-
-            websocket.onmessage = function (event) {
-                const data = JSON.parse(event.data);
-                handleWebSocketMessage(data);
-            };
-
-            websocket.onclose = function () {
-                addLogEntry('WebSocket connection closed', 'warning');
-                updateConnectionStatus(false);
-                websocket = null;
-            };
-
-            websocket.onerror = function (error) {
-                addLogEntry(`WebSocket error: Connection failed. Check server URL and ensure server is running.`, 'error');
-                updateConnectionStatus(false);
-                websocket = null;
-            };
+    websocket.onmessage = function (event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            addLogEntry(`JSON parse error: ${e}`, 'error');
         }
+    };
+
+    websocket.onclose = function () {
+        addLogEntry('WebSocket connection closed', 'warning');
+        updateConnectionStatus(false);
+        websocket = null;
+    };
+
+    websocket.onerror = function (error) {
+        addLogEntry(`WebSocket error: ${error.message || error}`, 'error');
+    };
+}
 
         function disconnectWebSocket() {
             if (websocket) {
