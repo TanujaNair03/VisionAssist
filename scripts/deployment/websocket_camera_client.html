@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vision Assistance - Live Camera Stream</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .controls select,
+        .controls button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+
+        .controls button {
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+
+        .controls button:hover {
+            background: #0056b3;
+        }
+
+        .controls button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        .status {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .status-connected {
+            background-color: #d4edda;
+        }
+
+        .status-disconnected {
+            background-color: #f8d7da;
+        }
+
+        .status-streaming {
+            background-color: #d1ecf1;
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+        }
+
+        .video-section {
+            text-align: center;
+        }
+
+        .video-container {
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            background: #000;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .video-container img {
+            max-width: 100%;
+            max-height: 500px;
+            border-radius: 8px;
+        }
+
+        .video-placeholder {
+            color: #666;
+            font-size: 18px;
+        }
+
+        .info-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .info-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+        }
+
+        .info-box h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .log {
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .log-error {
+            color: #dc3545;
+        }
+
+        .log-info {
+            color: #17a2b8;
+        }
+
+        .log-success {
+            color: #28a745;
+        }
+
+        .log-warning {
+            color: #ffc107;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎥 Vision Assistance - Live Stream & Upload</h1>
+            <p>Real-time object detection with local camera and image upload</p>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="serverUrl" placeholder="4.188.81.64 or localhost:8000"
+                style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 200px;"
+                value="() => { if (window.location.hostname && window.location.hostname !== 'file') { return `${window.location.hostname}:8000`; } else { return '4.188.81.64'; } }">
+            <button id="connectBtn" onclick="connectWebSocket()">Connect</button>
+            <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+            <br><br>
+            <button id="startLocalCameraBtn" onclick="startLocalCamera()" disabled>📹 Start Local Camera</button>
+            <button id="stopLocalCameraBtn" onclick="stopLocalCamera()" disabled>⏹️ Stop Camera</button>
+            <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="uploadImage()">
+            <button id="uploadBtn" onclick="document.getElementById('imageUpload').click()" disabled>📸 Upload
+                Image</button>
+            <button id="muteBtn" onclick="toggleMute()">🔊 Sound On</button>
+        </div>
+
+        <div class="status">
+            <span id="connectionStatus" class="status-item status-disconnected">Disconnected</span>
+            <span id="streamingStatus" class="status-item">Not Streaming</span>
+            <span id="clientCount" class="status-item">Clients: 0</span>
+            <span id="fps" class="status-item">FPS: 0</span>
+        </div>
+
+        <div class="content">
+            <div class="video-section">
+                <div class="video-container" id="videoContainer">
+                    <div class="video-placeholder">Connect and use local camera or upload image</div>
+                </div>
+                <div id="frameInfo" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
+            </div>
+
+            <div class="info-section">
+                <div class="info-box">
+                    <h3>📊 Statistics</h3>
+                    <div class="stats-grid" id="statsGrid">
+                        <div class="stat-item">
+                            <span>Frame Count:</span>
+                            <span id="frameCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Detections:</span>
+                            <span id="detectionsCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Alerts:</span>
+                            <span id="alertsCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Audio Played:</span>
+                            <span id="audioPlayedCount">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="info-box">
+                    <h3>📝 Activity Log</h3>
+                    <div id="activityLog" class="log"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let websocket = null;
+        let isConnected = false;
+        let isMuted = false;
+        let frameCount = 0;
+        let audioPlayedCount = 0;
+        let lastFrameTime = Date.now();
+        let fpsCounter = 0;
+
+        // DOM elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const streamingStatus = document.getElementById('streamingStatus');
+        const clientCount = document.getElementById('clientCount');
+        const fpsDisplay = document.getElementById('fps');
+        const videoContainer = document.getElementById('videoContainer');
+        const frameInfo = document.getElementById('frameInfo');
+        const activityLog = document.getElementById('activityLog');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const startLocalCameraBtn = document.getElementById('startLocalCameraBtn');
+        const stopLocalCameraBtn = document.getElementById('stopLocalCameraBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const muteBtn = document.getElementById('muteBtn');
+
+        // Local camera variables
+        let localStream = null;
+        let localVideo = null;
+        let captureInterval = null;
+
+        // Update FPS counter every second
+        setInterval(() => {
+            fpsDisplay.textContent = `FPS: ${fpsCounter}`;
+            fpsCounter = 0;
+        }, 1000);
+
+        function addLogEntry(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            activityLog.appendChild(entry);
+            activityLog.scrollTop = activityLog.scrollHeight;
+        }
+
+        function updateConnectionStatus(connected) {
+            isConnected = connected;
+            connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
+            connectionStatus.className = `status-item ${connected ? 'status-connected' : 'status-disconnected'}`;
+
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            startLocalCameraBtn.disabled = !connected;
+            stopLocalCameraBtn.disabled = !connected || !localStream;
+            uploadBtn.disabled = !connected;
+        }
+
+function connectWebSocket() {
+    if (websocket) return;
+
+    addLogEntry('Connecting to WebSocket...', 'info');
+
+    // ALWAYS use WSS + your domain
+    const wsUrl = `wss://4.188.81.64.nip.io/ws/camera/stream`;
+    addLogEntry(`Connecting to: ${wsUrl}`, 'info');
+
+    try {
+        websocket = new WebSocket(wsUrl);
+    } catch (e) {
+        addLogEntry(`WebSocket initialization error: ${e}`, 'error');
+        return;
+    }
+
+    websocket.onopen = function () {
+        addLogEntry('WebSocket connected successfully!', 'success');
+        updateConnectionStatus(true);
+    };
+
+    websocket.onmessage = function (event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            addLogEntry(`JSON parse error: ${e}`, 'error');
+        }
+    };
+
+    websocket.onclose = function () {
+        addLogEntry('WebSocket connection closed', 'warning');
+        updateConnectionStatus(false);
+        websocket = null;
+    };
+
+    websocket.onerror = function (error) {
+        addLogEntry(`WebSocket error: ${error.message || error}`, 'error');
+    };
+}
+
+        function disconnectWebSocket() {
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+                updateConnectionStatus(false);
+                addLogEntry('Disconnected from WebSocket', 'info');
+            }
+        }
+
+        async function startLocalCamera() {
+            if (!websocket) return;
+
+            addLogEntry('Starting local camera...', 'info');
+
+            try {
+                // Request access to user's camera
+                localStream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 640, height: 480 }
+                });
+
+                // Create video element for capture
+                localVideo = document.createElement('video');
+                localVideo.srcObject = localStream;
+                localVideo.play();
+
+                // Start capturing frames
+                captureInterval = setInterval(captureAndSendFrame, 200); // 5 FPS
+
+                addLogEntry('Local camera started successfully!', 'success');
+                streamingStatus.textContent = 'Local Camera Active';
+                streamingStatus.className = 'status-item status-streaming';
+
+                startLocalCameraBtn.disabled = true;
+                stopLocalCameraBtn.disabled = false;
+
+            } catch (error) {
+                addLogEntry(`Failed to start camera: ${error.message}`, 'error');
+            }
+        }
+
+        function stopLocalCamera() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+
+            if (captureInterval) {
+                clearInterval(captureInterval);
+                captureInterval = null;
+            }
+
+            addLogEntry('Local camera stopped', 'warning');
+            streamingStatus.textContent = 'Camera Stopped';
+            streamingStatus.className = 'status-item';
+
+            startLocalCameraBtn.disabled = false;
+            stopLocalCameraBtn.disabled = true;
+        }
+
+        function captureAndSendFrame() {
+            if (!localVideo || !websocket || websocket.readyState !== WebSocket.OPEN) return;
+
+            // Create canvas to capture frame
+            const canvas = document.createElement('canvas');
+            canvas.width = localVideo.videoWidth || 640;
+            canvas.height = localVideo.videoHeight || 480;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(localVideo, 0, 0);
+
+            // Convert to base64 JPEG
+            const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+            // Send frame via WebSocket for processing
+            websocket.send(JSON.stringify({
+                command: 'process_frame',
+                frame_data: frameData
+            }));
+        }
+
+        function uploadImage() {
+            const fileInput = document.getElementById('imageUpload');
+            const file = fileInput.files[0];
+
+            if (!file || !websocket) return;
+
+            addLogEntry(`Uploading image: ${file.name}...`, 'info');
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const imageData = e.target.result.split(',')[1]; // Remove data:image/jpeg;base64,
+
+                websocket.send(JSON.stringify({
+                    command: 'process_frame',
+                    frame_data: imageData
+                }));
+
+                addLogEntry('Image uploaded for processing', 'success');
+            };
+
+            reader.readAsDataURL(file);
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            muteBtn.textContent = isMuted ? '🔇 Sound Off' : '🔊 Sound On';
+            addLogEntry(`Audio ${isMuted ? 'muted' : 'unmuted'}`, 'info');
+        }
+
+        function handleWebSocketMessage(data) {
+            switch (data.type) {
+                case 'connected':
+                    addLogEntry(`Connected - ${data.message}`, 'success');
+                    clientCount.textContent = `Clients: ${data.client_count}`;
+                    break;
+
+                case 'frame_processed':
+                case 'frame_data':
+                    handleFrameData(data);
+                    break;
+
+                case 'processing_result':
+                    handleProcessingResult(data);
+                    break;
+
+                case 'error':
+                    addLogEntry(`Error: ${data.message}`, 'error');
+                    break;
+
+                default:
+                    addLogEntry(`Received: ${data.type}`, 'info');
+            }
+        }
+
+        function handleProcessingResult(data) {
+            // Handle results from image/frame processing
+            if (data.annotated_frame) {
+                // Display annotated frame
+                const img = document.createElement('img');
+                img.src = `data:image/jpeg;base64,${data.annotated_frame}`;
+                img.onload = function () {
+                    videoContainer.innerHTML = '';
+                    videoContainer.appendChild(img);
+                };
+            }
+
+            // Update statistics
+            if (data.detections_count !== undefined) {
+                document.getElementById('detectionsCount').textContent = data.detections_count;
+            }
+            if (data.alerts_count !== undefined) {
+                document.getElementById('alertsCount').textContent = data.alerts_count;
+            }
+
+            // Play audio alerts
+            if (!isMuted && data.audio_data && data.audio_data.length > 0) {
+                playAudioAlerts(data.audio_data);
+            }
+
+            frameCount++;
+            document.getElementById('frameCount').textContent = frameCount;
+            frameInfo.textContent = `Frame: ${frameCount} | Detections: ${data.detections_count || 0} | Alerts: ${data.alerts_count || 0}`;
+        }
+
+        function handleFrameData(data) {
+            // Update FPS counter
+            fpsCounter++;
+
+            // Update frame display
+            if (data.frame_data) {
+                const img = document.createElement('img');
+                img.src = `data:image/jpeg;base64,${data.frame_data}`;
+                img.onload = function () {
+                    videoContainer.innerHTML = '';
+                    videoContainer.appendChild(img);
+                };
+            }
+
+            // Update statistics
+            frameCount = data.frame_count || frameCount;
+            document.getElementById('frameCount').textContent = frameCount;
+            document.getElementById('detectionsCount').textContent = data.detections_count || 0;
+            document.getElementById('alertsCount').textContent = data.alerts_count || 0;
+
+            // Update frame info
+            frameInfo.textContent = `Frame: ${frameCount} | Detections: ${data.detections_count || 0} | Alerts: ${data.alerts_count || 0}`;
+
+            // Play audio alerts if not muted
+            if (!isMuted && data.audio_data && data.audio_data.length > 0) {
+                playAudioAlerts(data.audio_data);
+            }
+        }
+
+        function playAudioAlerts(audioDataArray) {
+            audioDataArray.forEach((audioBase64, index) => {
+                setTimeout(() => {
+                    try {
+                        const audioBlob = base64ToBlob(audioBase64, 'audio/mp3');
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audio = new Audio(audioUrl);
+
+                        audio.onended = () => {
+                            URL.revokeObjectURL(audioUrl);
+                        };
+
+                        audio.onerror = (error) => {
+                            addLogEntry(`Audio playback error: ${error}`, 'error');
+                        };
+
+                        audio.play().then(() => {
+                            audioPlayedCount++;
+                            document.getElementById('audioPlayedCount').textContent = audioPlayedCount;
+                        }).catch(error => {
+                            addLogEntry(`Failed to play audio: ${error}`, 'error');
+                        });
+
+                    } catch (error) {
+                        addLogEntry(`Audio processing error: ${error}`, 'error');
+                    }
+                }, index * 100); // Slight delay between multiple audio alerts
+            });
+        }
+
+        function base64ToBlob(base64Data, contentType) {
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+
+            const byteArray = new Uint8Array(byteNumbers);
+            return new Blob([byteArray], { type: contentType });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            addLogEntry('Vision Assistance client loaded', 'success');
+            addLogEntry('Enter server URL and click Connect. Then use your local camera or upload images!', 'info');
+
+            // Set default server URL based on current location or localhost
+            const serverInput = document.getElementById('serverUrl');
+            if (window.location.hostname && window.location.hostname !== 'file') {
+                // If served from a web server, try to use same host with port 8000
+                const defaultUrl = `${window.location.hostname}:8000`;
+                serverInput.value = defaultUrl;
+            } else {
+                // Default to Azure VM IP for file:// protocol
+                serverInput.value = '4.188.81.64';
+            }
+        });
+        document.getElementById('serverUrl').value = window.location.hostname && window.location.hostname !== 'file' ? `${window.location.hostname}:8000` : '4.188.81.64';
+
+    </script>
+</body>
+
+</html>
