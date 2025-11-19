@@ -1,6 +1,7 @@
 """
 Vision Assistance System - Single File Modular Implementation
 Real-time object detection with audio alerts via HTTP API
+With Performance Logging
 
 All modules consolidated into functions for easy deployment
 """
@@ -16,6 +17,8 @@ import json
 import base64
 import asyncio
 import threading
+import csv
+from datetime import datetime
 from typing import Dict, List, Tuple, Optional, Set
 from dataclasses import dataclass
 from collections import deque
@@ -47,42 +50,9 @@ FOCAL_LENGTH_PIXELS = 762.99
 
 # Object Detection & Filtering
 NOISY_CLASSES_TO_IGNORE = [
-    # Accessories
-    24, # backpack
-    25, # umbrella
-    26, # handbag
-    27, # tie
-    # Sports
-    31, # snowboard
-    34, # baseball bat
-    35, # baseball glove
-    36, # skateboard
-    37, # surfboard
-    38, # tennis racket
-    # Kitchen & Food
-    39, # bottle
-    40, # wine glass
-    41, # cup
-    44, # spoon
-    45, # bowl
-    46, # banana
-    47, # apple
-    48, # sandwich
-    49, # orange
-    50, # broccoli
-    51, # carrot
-    52, # hot dog
-    53, # pizza
-    54, # donut
-    55, # cake
-    # Other
-    73, # book
-    74, # clock
-    75, # vase
-    77, # teddy bear
-    78, # hair drier
-    79, # toothbrush
+    24, 25, 26, 27, 31, 34, 35, 36, 37, 38, 39, 40, 41, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 73, 74, 75, 77, 78, 79
 ]
+
 # Known object heights (meters) for distance estimation
 KNOWN_OBJECT_HEIGHTS = {
     0: 1.7,  # person
@@ -114,20 +84,25 @@ TTS_LANGUAGE = 'en'
 TTS_SLOW_SPEECH = False
 AUDIO_CACHE_SIZE = 50
 PARALLEL_TTS_WORKERS = 4
-ENABLE_LOCAL_AUDIO = False  # Set to True to play audio on server instead of sending to client
-CONTINUOUS_AUDIO_MODE = True  # Provide ongoing narration of surroundings
-CONTINUOUS_AUDIO_INTERVAL = 2.0  # Seconds between continuous updates
-NARRATION_MAX_OBJECTS = 3  # Maximum objects to mention in narration
+ENABLE_LOCAL_AUDIO = False
+CONTINUOUS_AUDIO_MODE = True
+CONTINUOUS_AUDIO_INTERVAL = 2.0
+NARRATION_MAX_OBJECTS = 3
 
 # Server Configuration
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = 8000
 
+# Logging Configuration
+ENABLE_PERFORMANCE_LOGGING = True
+PERFORMANCE_LOG_FILE = 'performance_log.csv'
+LOG_BATCH_SIZE = 10
+
 # WebSocket Streaming Configuration
 STREAMING_FPS = 30
-STREAMING_FRAME_DELAY = 1.0 / STREAMING_FPS  # seconds between frames
+STREAMING_FRAME_DELAY = 1.0 / STREAMING_FPS
 MAX_WEBSOCKET_CLIENTS = 5
-WEBSOCKET_SEND_TIMEOUT = 1.0  # seconds
+WEBSOCKET_SEND_TIMEOUT = 1.0
 
 # ============================================================================
 # DATA STRUCTURES
@@ -144,6 +119,121 @@ class AlertEvent:
     direction: str
     motion: str
     alert_text: str
+
+@dataclass
+class PerformanceMetrics:
+    """Represents performance metrics for a frame"""
+    timestamp: float
+    frame_count: int
+    yolo_time: float
+    distance_calc_time: float
+    direction_motion_time: float
+    alert_processing_time: float
+    audio_generation_time: float
+    annotation_time: float
+    total_frame_time: float
+    detections_count: int
+    alerts_count: int
+    
+    def to_dict(self):
+        """Convert to dictionary for CSV logging"""
+        return {
+            'timestamp': self.timestamp,
+            'datetime': datetime.fromtimestamp(self.timestamp).isoformat(),
+            'frame_count': self.frame_count,
+            'yolo_time_ms': round(self.yolo_time * 1000, 2),
+            'distance_calc_time_ms': round(self.distance_calc_time * 1000, 2),
+            'direction_motion_time_ms': round(self.direction_motion_time * 1000, 2),
+            'alert_processing_time_ms': round(self.alert_processing_time * 1000, 2),
+            'audio_generation_time_ms': round(self.audio_generation_time * 1000, 2),
+            'annotation_time_ms': round(self.annotation_time * 1000, 2),
+            'total_frame_time_ms': round(self.total_frame_time * 1000, 2),
+            'fps': round(1.0 / self.total_frame_time if self.total_frame_time > 0 else 0, 2),
+            'detections_count': self.detections_count,
+            'alerts_count': self.alerts_count
+        }
+
+# ============================================================================
+# PERFORMANCE LOGGING FUNCTIONS
+# ============================================================================
+
+class PerformanceLogger:
+    """Manages performance logging to CSV file"""
+    
+    def __init__(self, log_file: str = PERFORMANCE_LOG_FILE):
+        self.log_file = log_file
+        self.metrics_buffer = []
+        self.log_lock = threading.Lock()
+        self.initialize_log_file()
+    
+    def initialize_log_file(self):
+        """Initialize CSV log file with headers"""
+        if not os.path.exists(self.log_file):
+            with open(self.log_file, 'w', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=[
+                    'timestamp', 'datetime', 'frame_count',
+                    'yolo_time_ms', 'distance_calc_time_ms', 'direction_motion_time_ms',
+                    'alert_processing_time_ms', 'audio_generation_time_ms',
+                    'annotation_time_ms', 'total_frame_time_ms', 'fps',
+                    'detections_count', 'alerts_count'
+                ])
+                writer.writeheader()
+            print(f"📊 Performance log initialized: {self.log_file}")
+    
+    def log_metrics(self, metrics: PerformanceMetrics):
+        """Add metrics to buffer and write if batch size reached"""
+        with self.log_lock:
+            self.metrics_buffer.append(metrics.to_dict())
+            
+            if len(self.metrics_buffer) >= LOG_BATCH_SIZE:
+                self.flush_buffer()
+    
+    def flush_buffer(self):
+        """Write buffered metrics to file"""
+        if not self.metrics_buffer:
+            return
+        
+        try:
+            with open(self.log_file, 'a', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=self.metrics_buffer[0].keys())
+                writer.writerows(self.metrics_buffer)
+            
+            print(f"📝 Logged {len(self.metrics_buffer)} performance records")
+            self.metrics_buffer.clear()
+        except Exception as e:
+            print(f"⚠️ Failed to write performance log: {e}")
+    
+    def get_summary_stats(self, last_n: int = 100):
+        """Get summary statistics from recent logs"""
+        try:
+            with open(self.log_file, 'r') as f:
+                reader = csv.DictReader(f)
+                rows = list(reader)[-last_n:]
+            
+            if not rows:
+                return None
+            
+            stats = {
+                'total_frames': len(rows),
+                'avg_yolo_ms': round(np.mean([float(r['yolo_time_ms']) for r in rows]), 2),
+                'avg_distance_ms': round(np.mean([float(r['distance_calc_time_ms']) for r in rows]), 2),
+                'avg_direction_ms': round(np.mean([float(r['direction_motion_time_ms']) for r in rows]), 2),
+                'avg_alert_ms': round(np.mean([float(r['alert_processing_time_ms']) for r in rows]), 2),
+                'avg_audio_ms': round(np.mean([float(r['audio_generation_time_ms']) for r in rows]), 2),
+                'avg_annotation_ms': round(np.mean([float(r['annotation_time_ms']) for r in rows]), 2),
+                'avg_total_ms': round(np.mean([float(r['total_frame_time_ms']) for r in rows]), 2),
+                'avg_fps': round(np.mean([float(r['fps']) for r in rows]), 2),
+                'avg_detections': round(np.mean([int(r['detections_count']) for r in rows]), 2),
+                'avg_alerts': round(np.mean([int(r['alerts_count']) for r in rows]), 2)
+            }
+            
+            return stats
+        except Exception as e:
+            print(f"⚠️ Failed to get summary stats: {e}")
+            return None
+
+# Global performance logger
+performance_logger = None
 
 # ============================================================================
 # DETECTION ENGINE FUNCTIONS
@@ -173,9 +263,7 @@ def detect_and_track(model, frame: np.ndarray, conf_threshold: float = CONFIDENC
     if model is None:
         raise RuntimeError("Model not loaded")
 
-    # Run YOLO inference with tracking
     results = model.track(frame, conf=conf_threshold, persist=True, verbose=False)
-
     detections = []
 
     if results[0].boxes.id is not None:
@@ -187,14 +275,10 @@ def detect_and_track(model, frame: np.ndarray, conf_threshold: float = CONFIDENC
             track_id = int(track_id)
             class_id = int(class_id)
 
-            # Skip ignored classes
             if class_id in NOISY_CLASSES_TO_IGNORE:
                 continue
 
-            # Get class name
             class_name = model.names.get(class_id, f'Class{class_id}')
-
-            # Calculate center point
             x1, y1, x2, y2 = map(int, box)
             cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
 
@@ -216,10 +300,7 @@ def estimate_distance(box: List[float], class_id: int) -> float:
     if box_height_pixels <= 0:
         return float('inf')
 
-    # Get known height for this class
     object_real_height = KNOWN_OBJECT_HEIGHTS.get(class_id, DEFAULT_OBJECT_HEIGHT)
-
-    # Distance = (real_height * focal_length) / pixel_height
     estimated_distance = (object_real_height * FOCAL_LENGTH_PIXELS) / box_height_pixels
 
     return estimated_distance
@@ -229,21 +310,16 @@ def get_direction_motion(track_id: int, frame_width: int, track_histories: Dict)
     direction_str = "Ahead"
     motion_str = "Static"
 
-    if (track_id in track_histories and
-        len(track_histories[track_id]) == HISTORY_FRAMES):
-
+    if (track_id in track_histories and len(track_histories[track_id]) == HISTORY_FRAMES):
         history = track_histories[track_id]
         oldest_pos, newest_pos = history[0], history[-1]
 
-        # Calculate movement
         dx = newest_pos[0] - oldest_pos[0]
         dy = newest_pos[1] - oldest_pos[1]
 
-        if (abs(dx) > MOVEMENT_THRESHOLD_PIXELS or
-            abs(dy) > MOVEMENT_THRESHOLD_PIXELS):
+        if (abs(dx) > MOVEMENT_THRESHOLD_PIXELS or abs(dy) > MOVEMENT_THRESHOLD_PIXELS):
             motion_str = "Moving"
 
-        # Determine direction relative to frame center
         frame_center_x = frame_width / 2
         relative_pos = (newest_pos[0] - frame_center_x) / frame_center_x
 
@@ -254,8 +330,7 @@ def get_direction_motion(track_id: int, frame_width: int, track_histories: Dict)
 
     return direction_str, motion_str
 
-def annotate_frame(frame: np.ndarray, detections: List[Dict],
-                   frame_width: int, track_histories: Dict) -> np.ndarray:
+def annotate_frame(frame: np.ndarray, detections: List[Dict], frame_width: int, track_histories: Dict) -> np.ndarray:
     """Annotate frame with detection information"""
     annotated_frame = frame.copy()
 
@@ -266,22 +341,15 @@ def annotate_frame(frame: np.ndarray, detections: List[Dict],
         class_id = detection['class_id']
 
         x1, y1, x2, y2 = map(int, box)
-
-        # Estimate distance
         distance = estimate_distance(box, class_id)
-
-        # Get direction and motion
         direction, motion = get_direction_motion(track_id, frame_width, track_histories)
 
-        # Create info text
         info_text = f"ID:{track_id} {class_name} {distance:.1f}m {direction}"
         if motion == "Moving":
             info_text += f" {motion}"
 
-        # Draw bounding box and text
         cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-        cv2.putText(annotated_frame, info_text, (x1, y1 - 10),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+        cv2.putText(annotated_frame, info_text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
     return annotated_frame
 
@@ -291,25 +359,17 @@ def annotate_frame(frame: np.ndarray, detections: List[Dict],
 
 def generate_tts_audio(text: str, audio_cache: Dict) -> Optional[AudioSegment]:
     """Generate TTS audio for given text with caching"""
-    # Check cache first
     if text in audio_cache:
         return audio_cache[text]
 
     try:
-        # Generate TTS
         tts = gTTS(text=text, lang=TTS_LANGUAGE, slow=TTS_SLOW_SPEECH)
-
-        # Use BytesIO for better performance
         audio_buffer = io.BytesIO()
         tts.write_to_fp(audio_buffer)
         audio_buffer.seek(0)
-
-        # Convert to AudioSegment
         audio_segment = AudioSegment.from_file(audio_buffer, format="mp3")
 
-        # Cache the result with size management
         if len(audio_cache) >= AUDIO_CACHE_SIZE:
-            # Remove oldest item (simple FIFO)
             oldest_key = next(iter(audio_cache))
             del audio_cache[oldest_key]
 
@@ -329,19 +389,16 @@ def export_audio_bytes(audio_segment: AudioSegment, format: str = "mp3") -> byte
 def play_audio_locally(audio_segment: AudioSegment):
     """Play audio locally on the server (requires audio output)"""
     try:
-        # This requires the server to have audio output capabilities
         from pydub.playback import play
         play(audio_segment)
     except Exception as e:
         print(f"⚠️ Local audio playback failed: {e}")
-        print("Make sure the server has audio output and required audio libraries")
 
 # ============================================================================
 # ALERT MANAGER FUNCTIONS
 # ============================================================================
 
-def should_alert(detection: Dict, current_time: float, frame_width: int,
-                track_histories: Dict, cooldown_state: Dict) -> Optional[AlertEvent]:
+def should_alert(detection: Dict, current_time: float, frame_width: int, track_histories: Dict, cooldown_state: Dict) -> Optional[AlertEvent]:
     """Determine if an alert should be generated for a detection"""
     class_id = int(detection['class_id'])
     
@@ -353,26 +410,19 @@ def should_alert(detection: Dict, current_time: float, frame_width: int,
     class_name = detection['class_name']
     box = detection['box']
 
-    # Calculate distance
     distance = estimate_distance(box, class_id)
-
-    # Get direction and motion
     direction, motion = get_direction_motion(track_id, frame_width, track_histories)
 
-    # Check if object is within alert distance (only for non-humans)
     is_close_object = (distance < ALERT_DISTANCE_OBJECT)
 
     if not is_close_object:
         return None
 
-    # Check cooldown conditions
     if not is_cooldown_ready(track_id, class_id, current_time, cooldown_state):
         return None
 
-    # Generate alert text
     alert_text = generate_alert_text(class_name, distance, direction, motion)
 
-    # Create alert event
     alert_event = AlertEvent(
         timestamp=current_time,
         track_id=track_id,
@@ -384,193 +434,77 @@ def should_alert(detection: Dict, current_time: float, frame_width: int,
         alert_text=alert_text
     )
 
-    # Update cooldown tracking
     update_cooldowns(track_id, class_id, current_time, cooldown_state)
-
     return alert_event
 
-def is_cooldown_ready(track_id: int, class_id: int, current_time: float,
-                     cooldown_state: Dict) -> bool:
+def is_cooldown_ready(track_id: int, class_id: int, current_time: float, cooldown_state: Dict) -> bool:
     """Check if all cooldown conditions are met"""
-
-    # Check per-track cooldown
     last_track_alert = cooldown_state['alerted_tracks'].get(track_id, -float('inf'))
     if (current_time - last_track_alert) < ALERT_REPEAT_DELAY_SEC:
         return False
 
-    # Check per-class cooldown
     last_class_alert = cooldown_state['last_alert_time_by_class'].get(class_id, -float('inf'))
     if (current_time - last_class_alert) < ALERT_CLASS_COOLDOWN_SEC:
         return False
 
-    # Check global cooldown
     if (current_time - cooldown_state['last_global_alert_time']) < GLOBAL_ALERT_COOLDOWN:
         return False
 
     return True
 
-def update_cooldowns(track_id: int, class_id: int, current_time: float,
-                    cooldown_state: Dict):
+def update_cooldowns(track_id: int, class_id: int, current_time: float, cooldown_state: Dict):
     """Update cooldown tracking"""
     cooldown_state['alerted_tracks'][track_id] = current_time
     cooldown_state['last_alert_time_by_class'][class_id] = current_time
 
-def generate_alert_text(class_name: str, distance: float,
-                       direction: str, motion: str) -> str:
+def generate_alert_text(class_name: str, distance: float, direction: str, motion: str) -> str:
     """Generate contextual alert text"""
     dist_str = f"{distance:.0f}"
 
-    # Base alert with object, distance, and direction
     if motion == "Moving":
         alert_base = f"{class_name} moving, about {dist_str} meters, {direction}."
     else:
         alert_base = f"{class_name}, about {dist_str} meters, {direction}."
 
-    # Add caution prefix
     alert_text = f"Caution: {alert_base}"
-
     return alert_text
 
-def process_detections(detections: List[Dict], current_time: float,
-                      frame_width: int, track_histories: Dict,
-                      cooldown_state: Dict) -> List[AlertEvent]:
+def process_detections(detections: List[Dict], current_time: float, frame_width: int, track_histories: Dict, cooldown_state: Dict) -> List[AlertEvent]:
     """Process all detections and generate alerts"""
     potential_alerts = []
 
-    # Find all potential alerts
     for detection in detections:
-        alert_event = should_alert(detection, current_time, frame_width,
-                                  track_histories, cooldown_state)
+        alert_event = should_alert(detection, current_time, frame_width, track_histories, cooldown_state)
         if alert_event:
             potential_alerts.append(alert_event)
 
     if not potential_alerts:
         return []
 
-    # Prioritize alerts: persons first, then by distance
-    # potential_alerts.sort(key=lambda x: (0 if x.class_id == 0 else 1, x.distance))
-
-
-    # DO NOT prioritize humans — ignore them entirely
     potential_alerts = [p for p in potential_alerts if p.class_id != 0]
 
-    # If nothing left, return empty
     if not potential_alerts:
         return []
 
-    # Sort only non-human objects
     potential_alerts.sort(key=lambda x: x.distance)
-
-
-    # Take the highest priority alert
     highest_priority = potential_alerts[0]
 
-    # Final global cooldown check
     if (current_time - cooldown_state['last_global_alert_time']) >= GLOBAL_ALERT_COOLDOWN:
         cooldown_state['last_global_alert_time'] = current_time
         return [highest_priority]
 
     return []
 
-def generate_continuous_narration(detections: List[Dict], frame_width: int,
-                                track_histories: Dict) -> str:
-    """Generate continuous narration of the current scene (excluding humans)"""
-    if not detections:
-        return "Area clear."
-
-    # Sort detections by distance (closest first)
-    detection_info = []
-    for detection in detections:
-        # CRITICAL: Skip humans in continuous narration
-        if int(detection['class_id']) == 0:
-            continue
-            
-        distance = estimate_distance(detection['box'], detection['class_id'])
-        direction, motion = get_direction_motion(detection['track_id'], frame_width, track_histories)
-
-        detection_info.append({
-            'name': detection['class_name'],
-            'distance': distance,
-            'direction': direction,
-            'motion': motion
-        })
-
-    # If no non-human objects detected
-    if not detection_info:
-        return "Area clear."
-
-    # Sort by distance, take closest objects
-    detection_info.sort(key=lambda x: x['distance'])
-    top_objects = detection_info[:NARRATION_MAX_OBJECTS]
-
-    # Build narration
-    if len(top_objects) == 1:
-        obj = top_objects[0]
-        if obj['motion'] == "Moving":
-            narration = f"{obj['name']} moving {obj['direction']}, {obj['distance']:.0f} meters"
-        else:
-            narration = f"{obj['name']} {obj['direction']}, {obj['distance']:.0f} meters"
-        return narration
-
-    elif len(top_objects) == 2:
-        obj1, obj2 = top_objects
-        part1 = f"{obj1['name']} {obj1['direction']}, {obj1['distance']:.0f} meters"
-        part2 = f"{obj2['name']} {obj2['direction']}, {obj2['distance']:.0f} meters"
-        return f"{part1}. {part2}"
-
-    else:  # 3 or more objects
-        # Mention closest object in detail, then summarize others
-        closest = top_objects[0]
-        if closest['motion'] == "Moving":
-            main_part = f"{closest['name']} moving {closest['direction']}, {closest['distance']:.0f} meters"
-        else:
-            main_part = f"{closest['name']} {closest['direction']}, {closest['distance']:.0f} meters"
-
-        # Count other objects by direction
-        others = top_objects[1:]
-        directions = {}
-        for obj in others:
-            dir_key = obj['direction']
-            if dir_key not in directions:
-                directions[dir_key] = 0
-            directions[dir_key] += 1
-
-        if directions:
-            other_parts = []
-            for direction, count in directions.items():
-                if count == 1:
-                    other_parts.append(f"one {direction.lower()}")
-                else:
-                    other_parts.append(f"{count} {direction.lower()}")
-
-            other_summary = ", ".join(other_parts)
-            return f"{main_part}. Others: {other_summary}"
-        else:
-            return main_part
-
-
-def should_provide_continuous_audio(current_time: float, pipeline_state: Dict) -> bool:
-    """Determine if continuous audio should be provided"""
-    if not CONTINUOUS_AUDIO_MODE:
-        return False
-
-    last_audio_time = pipeline_state.get('last_continuous_audio_time', -float('inf'))
-    return (current_time - last_audio_time) >= CONTINUOUS_AUDIO_INTERVAL
-
-def generate_continuous_narration_from_detections(detections: List[Dict], frame_width: int,
-                                                track_histories: Dict) -> str:
+def generate_continuous_narration_from_detections(detections: List[Dict], frame_width: int, track_histories: Dict) -> str:
     """Generate continuous narration from detection data format (excluding humans)"""
     if not detections:
         return "Area clear."
 
-    # Convert detections to format needed for narration
     detection_info = []
     for detection in detections:
-        # CRITICAL: Skip humans in continuous narration
         if int(detection['class_id']) == 0:
             continue
             
-        # Calculate distance using bounding box
         bbox = detection.get('bbox', detection.get('box', [0, 0, 100, 100]))
         if isinstance(bbox, list) and len(bbox) == 4:
             x1, y1, x2, y2 = bbox
@@ -578,8 +512,6 @@ def generate_continuous_narration_from_detections(detections: List[Dict], frame_
             continue
             
         distance = estimate_distance([x1, y1, x2, y2], detection['class_id'])
-
-        # Get direction and motion
         track_id = detection['track_id']
         direction = get_direction_from_position(detection['center'][0], frame_width)
         motion = get_motion_from_history(track_id, track_histories)
@@ -591,22 +523,18 @@ def generate_continuous_narration_from_detections(detections: List[Dict], frame_
             'motion': motion
         })
 
-    # If no non-human objects detected
     if not detection_info:
         return "Area clear."
 
-    # Sort by distance, take closest objects
     detection_info.sort(key=lambda x: x['distance'])
     top_objects = detection_info[:NARRATION_MAX_OBJECTS]
 
-    # Build narration (same logic as above)
     if len(top_objects) == 1:
         obj = top_objects[0]
         if obj['motion'] == "Moving":
-            narration = f"{obj['name']} moving {obj['direction']}, {obj['distance']:.0f} meters"
+            return f"{obj['name']} moving {obj['direction']}, {obj['distance']:.0f} meters"
         else:
-            narration = f"{obj['name']} {obj['direction']}, {obj['distance']:.0f} meters"
-        return narration
+            return f"{obj['name']} {obj['direction']}, {obj['distance']:.0f} meters"
 
     elif len(top_objects) == 2:
         obj1, obj2 = top_objects
@@ -614,7 +542,7 @@ def generate_continuous_narration_from_detections(detections: List[Dict], frame_
         part2 = f"{obj2['name']} {obj2['direction']}, {obj2['distance']:.0f} meters"
         return f"{part1}. {part2}"
 
-    else:  # 3 or more objects
+    else:
         closest = top_objects[0]
         if closest['motion'] == "Moving":
             main_part = f"{closest['name']} moving {closest['direction']}, {closest['distance']:.0f} meters"
@@ -660,21 +588,25 @@ def get_motion_from_history(track_id: int, track_histories: Dict) -> str:
         return "Stationary"
 
     history = list(track_histories[track_id])
-    if len(history) < 5:  # Need some history to determine motion
+    if len(history) < 5:
         return "Stationary"
 
-    # Check if position has changed significantly
     recent_positions = history[-5:]
     x_positions = [pos[0] for pos in recent_positions]
-
-    # Calculate movement range
     x_range = max(x_positions) - min(x_positions)
-    movement_threshold = 30  # pixels
+    movement_threshold = 30
 
     return "Moving" if x_range > movement_threshold else "Stationary"
 
-def cleanup_inactive_tracks(active_track_ids: Set[int], track_histories: Dict,
-                          cooldown_state: Dict):
+def should_provide_continuous_audio(current_time: float, pipeline_state: Dict) -> bool:
+    """Determine if continuous audio should be provided"""
+    if not CONTINUOUS_AUDIO_MODE:
+        return False
+
+    last_audio_time = pipeline_state.get('last_continuous_audio_time', -float('inf'))
+    return (current_time - last_audio_time) >= CONTINUOUS_AUDIO_INTERVAL
+
+def cleanup_inactive_tracks(active_track_ids: Set[int], track_histories: Dict, cooldown_state: Dict):
     """Remove tracking data for inactive tracks"""
     inactive_tracks = set(track_histories.keys()) - active_track_ids
     for track_id in inactive_tracks:
@@ -705,66 +637,77 @@ def create_pipeline_state():
 def initialize_pipeline(model_path: str = YOLO_MODEL_PATH):
     """Initialize the vision assistance pipeline"""
     print("🚀 Initializing Vision Assistance Pipeline...")
-
     state = create_pipeline_state()
     state['model'] = load_yolo_model(model_path)
-
     print("✅ Vision Assistance Pipeline initialized successfully")
     return state
 
-def process_frame(frame: np.ndarray, pipeline_state: Dict,
-                 timestamp: float = None) -> Tuple[np.ndarray, List[bytes]]:
+def process_frame(frame: np.ndarray, pipeline_state: Dict, timestamp: float = None) -> Tuple[np.ndarray, List[bytes], List[str]]:
     """Process a single frame and generate alerts"""
+    frame_start_time = time.perf_counter()
+    
     if timestamp is None:
         timestamp = time.time()
 
     pipeline_state['frame_count'] += 1
 
     # Step 1: Object detection and tracking
+    yolo_start = time.perf_counter()
     detections = detect_and_track(pipeline_state['model'], frame)
+    yolo_time = time.perf_counter() - yolo_start
 
     # Step 2: Update tracking histories
     active_track_ids = set()
     for detection in detections:
         track_id = detection['track_id']
         cx, cy = detection['center']
-
         active_track_ids.add(track_id)
 
         if track_id not in pipeline_state['track_histories']:
             pipeline_state['track_histories'][track_id] = deque(maxlen=HISTORY_FRAMES)
         pipeline_state['track_histories'][track_id].append((cx, cy))
 
-    # Step 3: Generate alerts based on detections
-    frame_alerts = process_detections(
-        detections, timestamp, frame.shape[1],
-        pipeline_state['track_histories'], pipeline_state['cooldown_state']
-    )
+    # Step 2.5: Calculate distances
+    distance_start = time.perf_counter()
+    for detection in detections:
+        detection['distance'] = estimate_distance(detection['box'], detection['class_id'])
+    distance_calc_time = time.perf_counter() - distance_start
 
-    # Step 4: Generate audio for alerts
+    # Step 2.6: Calculate direction and motion
+    direction_start = time.perf_counter()
+    for detection in detections:
+        track_id = detection['track_id']
+        direction, motion = get_direction_motion(track_id, frame.shape[1], pipeline_state['track_histories'])
+        detection['direction'] = direction
+        detection['motion'] = motion
+    direction_motion_time = time.perf_counter() - direction_start
+
+    # Step 3: Generate alerts
+    alert_start = time.perf_counter()
+    frame_alerts = process_detections(detections, timestamp, frame.shape[1], pipeline_state['track_histories'], pipeline_state['cooldown_state'])
+    alert_processing_time = time.perf_counter() - alert_start
+
+    # Step 4: Generate audio
+    audio_start = time.perf_counter()
     audio_data_list = []
+    alert_texts = []
+    
     for alert in frame_alerts:
         audio_segment = generate_tts_audio(alert.alert_text, pipeline_state['audio_cache'])
         if audio_segment:
-            # Option 1: Play audio locally on server
             if ENABLE_LOCAL_AUDIO:
-                # Play audio on server (requires audio output)
                 threading.Thread(target=play_audio_locally, args=(audio_segment,), daemon=True).start()
 
-            # Option 2: Send audio data to client (always done for API compatibility)
             audio_bytes = export_audio_bytes(audio_segment)
             audio_data_list.append(audio_bytes)
+            alert_texts.append(alert.alert_text)
             print(f"🔊 Alert: {alert.alert_text}")
 
         pipeline_state['alert_log'].append(alert)
 
-    # Step 4.5: Generate continuous audio narration (only if no alerts and mode enabled)
-    if (not frame_alerts and CONTINUOUS_AUDIO_MODE and
-        should_provide_continuous_audio(timestamp, pipeline_state)):
-
-        narration_text = generate_continuous_narration_from_detections(
-            detections, frame.shape[1], pipeline_state['track_histories']
-        )
+    # Step 4.5: Continuous narration
+    if (not frame_alerts and CONTINUOUS_AUDIO_MODE and should_provide_continuous_audio(timestamp, pipeline_state)):
+        narration_text = generate_continuous_narration_from_detections(detections, frame.shape[1], pipeline_state['track_histories'])
 
         if narration_text:
             narration_audio = generate_tts_audio(narration_text, pipeline_state['audio_cache'])
@@ -774,163 +717,49 @@ def process_frame(frame: np.ndarray, pipeline_state: Dict,
 
                 audio_bytes = export_audio_bytes(narration_audio)
                 audio_data_list.append(audio_bytes)
+                alert_texts.append(narration_text)
                 print(f"🗣️  Narration: {narration_text}")
 
         pipeline_state['last_continuous_audio_time'] = timestamp
+    
+    audio_generation_time = time.perf_counter() - audio_start
 
-    # Step 5: Annotate frame with detection info
-    annotated_frame = annotate_frame(
-        frame, detections, frame.shape[1], pipeline_state['track_histories']
-    )
+    # Step 5: Annotate frame
+    annotation_start = time.perf_counter()
+    annotated_frame = annotate_frame(frame, detections, frame.shape[1], pipeline_state['track_histories'])
+    annotation_time = time.perf_counter() - annotation_start
 
     # Step 6: Cleanup inactive tracks
-    cleanup_inactive_tracks(active_track_ids, pipeline_state['track_histories'],
-                           pipeline_state['cooldown_state'])
+    cleanup_inactive_tracks(active_track_ids, pipeline_state['track_histories'], pipeline_state['cooldown_state'])
 
-    return annotated_frame, audio_data_list
+    # Calculate total frame time
+    total_frame_time = time.perf_counter() - frame_start_time
 
-def get_pipeline_stats(pipeline_state: Dict) -> Dict:
-    """Get comprehensive pipeline statistics"""
-    current_time = time.time()
+    # Log performance metrics
+    if ENABLE_PERFORMANCE_LOGGING and performance_logger:
+        metrics = PerformanceMetrics(
+            timestamp=timestamp,
+            frame_count=pipeline_state['frame_count'],
+            yolo_time=yolo_time,
+            distance_calc_time=distance_calc_time,
+            direction_motion_time=direction_motion_time,
+            alert_processing_time=alert_processing_time,
+            audio_generation_time=audio_generation_time,
+            annotation_time=annotation_time,
+            total_frame_time=total_frame_time,
+            detections_count=len(detections),
+            alerts_count=len(audio_data_list)
+        )
+        performance_logger.log_metrics(metrics)
 
-    # Count recent alerts (last 60 seconds)
-    recent_alerts = [alert for alert in pipeline_state['alert_log']
-                    if current_time - alert.timestamp < 60.0]
-
-    # Count by class
-    class_counts = {}
-    for alert in recent_alerts:
-        class_counts[alert.class_name] = class_counts.get(alert.class_name, 0) + 1
-
-    return {
-        'pipeline': {
-            'frame_count': pipeline_state['frame_count'],
-            'is_initialized': pipeline_state['model'] is not None
-        },
-        'alerts': {
-            'total_alerts': len(pipeline_state['alert_log']),
-            'recent_alerts_60s': len(recent_alerts),
-            'tracked_objects': len(pipeline_state['cooldown_state']['alerted_tracks']),
-            'class_counts_60s': class_counts,
-            'last_global_alert': pipeline_state['cooldown_state']['last_global_alert_time']
-        },
-        'audio_cache': {
-            'cached_items': len(pipeline_state['audio_cache']),
-            'cache_limit': AUDIO_CACHE_SIZE,
-            'cache_usage': len(pipeline_state['audio_cache']) / AUDIO_CACHE_SIZE
-        },
-        'detection_tracks': len(pipeline_state['track_histories'])
-    }
-
-def reset_pipeline(pipeline_state: Dict):
-    """Reset pipeline state"""
-    pipeline_state['frame_count'] = 0
-    pipeline_state['alert_log'].clear()
-    pipeline_state['audio_cache'].clear()
-    pipeline_state['track_histories'].clear()
-    pipeline_state['cooldown_state'] = {
-        'alerted_tracks': {},
-        'last_alert_time_by_class': {},
-        'last_global_alert_time': -float('inf')
-    }
-    print("🔄 Pipeline state reset")
+    return annotated_frame, audio_data_list, alert_texts
 
 # ============================================================================
-# CAMERA INPUT FUNCTIONS
+# CAMERA INPUT FUNCTIONS (Browser-based via WebSocket)
 # ============================================================================
 
-def get_available_cameras():
-    """Get list of available camera devices"""
-    available_cameras = []
-    for i in range(10):  # Check first 10 camera indices
-        cap = cv2.VideoCapture(i)
-        if cap.isOpened():
-            ret, frame = cap.read()
-            if ret:
-                height, width = frame.shape[:2]
-                available_cameras.append({
-                    'index': i,
-                    'width': width,
-                    'height': height,
-                    'name': f'Camera {i}'
-                })
-            cap.release()
-    return available_cameras
-
-def capture_frame_from_camera(camera_index: int = 0):
-    """Capture a single frame from camera"""
-    cap = cv2.VideoCapture(camera_index)
-
-    if not cap.isOpened():
-        raise RuntimeError(f"Could not open camera {camera_index}")
-
-    try:
-        # Set camera properties for better performance
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        cap.set(cv2.CAP_PROP_FPS, 30)
-
-        # Capture frame
-        ret, frame = cap.read()
-        if not ret:
-            raise RuntimeError("Failed to capture frame")
-
-        return frame
-    finally:
-        cap.release()
-
-class CameraStream:
-    """Manages continuous camera streaming"""
-
-    def __init__(self, camera_index: int = 0):
-        self.camera_index = camera_index
-        self.cap = None
-        self.is_streaming = False
-
-    def start_stream(self):
-        """Start camera stream"""
-        if self.cap is not None:
-            self.stop_stream()
-
-        self.cap = cv2.VideoCapture(self.camera_index)
-
-        if not self.cap.isOpened():
-            raise RuntimeError(f"Could not open camera {self.camera_index}")
-
-        # Set camera properties
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        self.cap.set(cv2.CAP_PROP_FPS, 30)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce latency
-
-        self.is_streaming = True
-        print(f"📹 Camera {self.camera_index} streaming started")
-
-    def stop_stream(self):
-        """Stop camera stream"""
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
-        self.is_streaming = False
-        print(f"📹 Camera {self.camera_index} streaming stopped")
-
-    def capture_frame(self):
-        """Capture frame from active stream"""
-        if not self.is_streaming or self.cap is None:
-            raise RuntimeError("Camera stream not active")
-
-        ret, frame = self.cap.read()
-        if not ret:
-            raise RuntimeError("Failed to capture frame from stream")
-
-        return frame
-
-    def __del__(self):
-        """Cleanup on deletion"""
-        self.stop_stream()
-
-# Global camera stream
-camera_stream = None
+# Camera functionality moved to browser-based WebSocket streaming
+# No server-side camera access needed
 
 # ============================================================================
 # WEBSOCKET CONNECTION MANAGER
@@ -965,17 +794,13 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
         print(f"🔗 WebSocket client disconnected. Total clients: {len(self.active_connections)}")
 
-        # Stop streaming if no clients
         if not self.active_connections:
             self.stop_streaming()
 
     async def send_to_client(self, websocket: WebSocket, message: dict):
         """Send message to specific client with timeout"""
         try:
-            await asyncio.wait_for(
-                websocket.send_json(message),
-                timeout=WEBSOCKET_SEND_TIMEOUT
-            )
+            await asyncio.wait_for(websocket.send_json(message), timeout=WEBSOCKET_SEND_TIMEOUT)
             return True
         except (asyncio.TimeoutError, Exception) as e:
             print(f"⚠️ Failed to send to client: {e}")
@@ -987,7 +812,6 @@ class ConnectionManager:
         if not self.active_connections:
             return
 
-        # Send to all clients, remove failed connections
         disconnected = []
 
         for websocket in self.active_connections[:]:
@@ -995,7 +819,6 @@ class ConnectionManager:
             if not success:
                 disconnected.append(websocket)
 
-        # Clean up failed connections
         for websocket in disconnected:
             self.disconnect(websocket)
 
@@ -1015,188 +838,53 @@ class ConnectionManager:
             print("🎬 Stopped continuous WebSocket streaming")
 
     async def continuous_streaming(self):
-        """Main continuous streaming loop"""
-        global camera_stream, pipeline_state
-
-        print("🎥 Starting continuous camera streaming loop...")
-
+        """Placeholder for future server-side streaming if needed"""
+        print("🎥 Browser-based streaming active - no server-side streaming needed")
+        
+        # Keep connection alive but don't do continuous streaming
         while self.streaming_active and self.active_connections:
-            try:
-                # Check if camera stream is active
-                if camera_stream is None or not camera_stream.is_streaming:
-                    await self.broadcast({
-                        "type": "error",
-                        "message": "Camera stream not active",
-                        "timestamp": time.time()
-                    })
-                    await asyncio.sleep(1.0)
-                    continue
-
-                # Capture and process frame
-                frame = camera_stream.capture_frame()
-                annotated_frame, audio_data_list = process_frame(frame, pipeline_state)
-
-                # Encode frame as JPEG for streaming
-                ret, buffer = cv2.imencode('.jpg', annotated_frame,
-                                         [cv2.IMWRITE_JPEG_QUALITY, 80])
-                if ret:
-                    frame_b64 = base64.b64encode(buffer).decode('utf-8')
-
-                    # Encode audio data
-                    audio_data = []
-                    for audio_bytes in audio_data_list:
-                        audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-                        audio_data.append(audio_b64)
-
-                    # Broadcast frame and audio
-                    message = {
-                        "type": "frame_data",
-                        "timestamp": time.time(),
-                        "frame_count": pipeline_state['frame_count'],
-                        "frame_data": frame_b64,
-                        "audio_data": audio_data,
-                        "alerts_count": len(audio_data_list),
-                        "detections_count": len(detect_and_track(pipeline_state['model'], frame))
-                    }
-
-                    await self.broadcast(message)
-
-                # Control frame rate
-                await asyncio.sleep(STREAMING_FRAME_DELAY)
-
-            except Exception as e:
-                print(f"❌ Error in streaming loop: {e}")
-                await self.broadcast({
-                    "type": "error",
-                    "message": f"Streaming error: {str(e)}",
-                    "timestamp": time.time()
-                })
-                await asyncio.sleep(1.0)
+            await asyncio.sleep(1)
 
         print("🎥 Continuous streaming loop ended")
 
-# Global connection manager
 connection_manager = ConnectionManager()
 
 # ============================================================================
 # HTTP SERVER
 # ============================================================================
 
-# Global pipeline state
 pipeline_state = None
+performance_logger = None
 
-# FastAPI app
 app = FastAPI(title="Vision Assistance API", version="1.0.0")
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize pipeline on startup"""
-    global pipeline_state, connection_manager
+    global pipeline_state, performance_logger
     pipeline_state = initialize_pipeline()
+    
+    if ENABLE_PERFORMANCE_LOGGING:
+        performance_logger = PerformanceLogger()
+    
     print("🔗 WebSocket connection manager initialized")
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Cleanup on shutdown"""
-    global connection_manager, camera_stream
+    global connection_manager, performance_logger
     print("🛑 Server shutting down...")
 
-    # Stop streaming and cleanup
+    if performance_logger:
+        performance_logger.flush_buffer()
+        print("📊 Performance logs flushed")
+
     if connection_manager:
         connection_manager.stop_streaming()
 
-    if camera_stream:
-        camera_stream.stop_stream()
 
-@app.post("/process_frame")
-async def process_frame_endpoint(file: UploadFile = File(...)):
-    """Process uploaded image file and return audio alerts"""
-    try:
-        # Read image file
-        image_data = await file.read()
 
-        # Decode image
-        image_array = np.frombuffer(image_data, dtype=np.uint8)
-        frame = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
 
-        if frame is None:
-            raise HTTPException(status_code=400, detail="Invalid image format")
-
-        # Process through pipeline
-        annotated_frame, audio_data_list = process_frame(frame, pipeline_state)
-
-        # Encode audio data as base64
-        audio_data = []
-        for audio_bytes in audio_data_list:
-            audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-            audio_data.append(audio_b64)
-
-        return {
-            "success": True,
-            "timestamp": time.time(),
-            "frame_count": pipeline_state['frame_count'],
-            "detections_count": len(detect_and_track(pipeline_state['model'], frame)),
-            "alerts_count": len(audio_data_list),
-            "audio_data": audio_data
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/process_frame_b64")
-async def process_frame_b64_endpoint(data: dict):
-    """Process base64 encoded image and return audio alerts"""
-    try:
-        frame_b64 = data.get('frame')
-        if not frame_b64:
-            raise HTTPException(status_code=400, detail="No frame data provided")
-
-        # Decode frame
-        frame_data = base64.b64decode(frame_b64)
-        frame_array = np.frombuffer(frame_data, dtype=np.uint8)
-        frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
-
-        if frame is None:
-            raise HTTPException(status_code=400, detail="Failed to decode frame")
-
-        # Process through pipeline
-        annotated_frame, audio_data_list = process_frame(frame, pipeline_state)
-
-        # Encode audio data as base64
-        audio_data = []
-        for audio_bytes in audio_data_list:
-            audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-            audio_data.append(audio_b64)
-
-        return {
-            "success": True,
-            "timestamp": time.time(),
-            "frame_count": pipeline_state['frame_count'],
-            "detections_count": len(detect_and_track(pipeline_state['model'], frame)),
-            "alerts_count": len(audio_data_list),
-            "audio_data": audio_data
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/stats")
-async def get_stats_endpoint():
-    """Get pipeline statistics"""
-    if pipeline_state is None:
-        raise HTTPException(status_code=503, detail="Pipeline not initialized")
-
-    stats = get_pipeline_stats(pipeline_state)
-    return {"success": True, "data": stats}
-
-@app.post("/reset")
-async def reset_pipeline_endpoint():
-    """Reset pipeline state"""
-    if pipeline_state is None:
-        raise HTTPException(status_code=503, detail="Pipeline not initialized")
-
-    reset_pipeline(pipeline_state)
-    return {"success": True, "message": "Pipeline state reset"}
 
 @app.get("/health")
 async def health_check():
@@ -1207,256 +895,62 @@ async def health_check():
         "model_loaded": pipeline_state['model'] is not None if pipeline_state else False
     }
 
-@app.get("/cameras")
-async def get_cameras():
-    """Get available cameras"""
-    try:
-        cameras = get_available_cameras()
-        return {"success": True, "cameras": cameras}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/camera/start/{camera_index}")
-async def start_camera(camera_index: int):
-    """Start camera stream"""
-    global camera_stream
-    try:
-        if camera_stream is not None:
-            camera_stream.stop_stream()
-
-        camera_stream = CameraStream(camera_index)
-        camera_stream.start_stream()
-
-        return {
-            "success": True,
-            "message": f"Camera {camera_index} started",
-            "camera_index": camera_index
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/camera/stop")
-async def stop_camera():
-    """Stop camera stream"""
-    global camera_stream
-    try:
-        if camera_stream is not None:
-            camera_stream.stop_stream()
-            camera_stream = None
-
-        return {"success": True, "message": "Camera stopped"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/camera/capture")
-async def capture_from_camera():
-    """Capture and process frame from active camera stream"""
-    global camera_stream
-    try:
-        if camera_stream is None or not camera_stream.is_streaming:
-            raise HTTPException(status_code=400, detail="No active camera stream. Start camera first.")
-
-        # Capture frame from stream
-        frame = camera_stream.capture_frame()
-
-        # Process through pipeline
-        annotated_frame, audio_data_list = process_frame(frame, pipeline_state)
-
-        # Encode audio data as base64
-        audio_data = []
-        for audio_bytes in audio_data_list:
-            audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-            audio_data.append(audio_b64)
-
-        return {
-            "success": True,
-            "timestamp": time.time(),
-            "frame_count": pipeline_state['frame_count'],
-            "detections_count": len(detect_and_track(pipeline_state['model'], frame)),
-            "alerts_count": len(audio_data_list),
-            "audio_data": audio_data
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/camera/capture_single/{camera_index}")
-async def capture_single_frame(camera_index: int):
-    """Capture and process a single frame from specified camera"""
-    try:
-        # Capture frame from camera
-        frame = capture_frame_from_camera(camera_index)
-
-        # Process through pipeline
-        annotated_frame, audio_data_list = process_frame(frame, pipeline_state)
-
-        # Encode audio data as base64
-        audio_data = []
-        for audio_bytes in audio_data_list:
-            audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-            audio_data.append(audio_b64)
-
-        return {
-            "success": True,
-            "timestamp": time.time(),
-            "frame_count": pipeline_state['frame_count'],
-            "detections_count": len(detect_and_track(pipeline_state['model'], frame)),
-            "alerts_count": len(audio_data_list),
-            "audio_data": audio_data,
-            "camera_index": camera_index
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/camera/status")
-async def camera_status():
-    """Get camera stream status"""
-    global camera_stream
-    if camera_stream is None:
-        return {
-            "success": True,
-            "streaming": False,
-            "camera_index": None
-        }
-
-    return {
-        "success": True,
-        "streaming": camera_stream.is_streaming,
-        "camera_index": camera_stream.camera_index
-    }
-
-# ============================================================================
-# WEBSOCKET ENDPOINTS
-# ============================================================================
 
 @app.websocket("/ws/camera/stream")
 async def websocket_camera_stream(websocket: WebSocket):
     """WebSocket endpoint for real-time camera streaming"""
-    global connection_manager, camera_stream
+    global connection_manager
 
-    # Try to connect client
     connected = await connection_manager.connect(websocket)
     if not connected:
         return
 
     try:
-        # Send initial status
         await connection_manager.send_to_client(websocket, {
             "type": "connected",
             "message": "WebSocket connected successfully",
             "timestamp": time.time(),
-            "camera_active": camera_stream is not None and camera_stream.is_streaming,
             "client_count": len(connection_manager.active_connections)
         })
 
-        # Start streaming if this is the first client and camera is ready
-        if (len(connection_manager.active_connections) == 1 and
-            camera_stream is not None and camera_stream.is_streaming):
-            connection_manager.start_streaming()
-
-        # Keep connection alive and handle client messages
         while True:
             try:
-                # Wait for client messages (for control commands)
                 data = await websocket.receive_json()
 
-                # Handle client commands
-                if data.get("command") == "start_camera":
-                    camera_index = data.get("camera_index", 0)
-                    try:
-                        if camera_stream is not None:
-                            camera_stream.stop_stream()
-
-                        camera_stream = CameraStream(camera_index)
-                        camera_stream.start_stream()
-
-                        await connection_manager.send_to_client(websocket, {
-                            "type": "camera_started",
-                            "camera_index": camera_index,
-                            "timestamp": time.time()
-                        })
-
-                        # Start streaming if not already active
-                        if not connection_manager.streaming_active:
-                            connection_manager.start_streaming()
-
-                    except Exception as e:
-                        await connection_manager.send_to_client(websocket, {
-                            "type": "error",
-                            "message": f"Failed to start camera: {str(e)}",
-                            "timestamp": time.time()
-                        })
-
-                elif data.get("command") == "stop_camera":
-                    if camera_stream is not None:
-                        camera_stream.stop_stream()
-                        camera_stream = None
-
-                    connection_manager.stop_streaming()
-
-                    await connection_manager.send_to_client(websocket, {
-                        "type": "camera_stopped",
-                        "timestamp": time.time()
-                    })
-
-                elif data.get("command") == "get_stats":
-                    if pipeline_state is not None:
-                        stats = get_pipeline_stats(pipeline_state)
-                        await connection_manager.send_to_client(websocket, {
-                            "type": "stats",
-                            "data": stats,
-                            "timestamp": time.time()
-                        })
-
-                elif data.get("command") == "process_frame":
-                    # Handle frame processing from client
+                if data.get("command") == "process_frame":
+                    # Handle frame processing from browser camera
                     frame_data = data.get("frame_data")
-                    if frame_data and pipeline_state is not None:
+                    if frame_data:
                         try:
-                            # Decode base64 frame
-                            import base64
+                            # Decode base64 frame data
                             frame_bytes = base64.b64decode(frame_data)
                             frame_array = np.frombuffer(frame_bytes, dtype=np.uint8)
                             frame = cv2.imdecode(frame_array, cv2.IMREAD_COLOR)
-
+                            
                             if frame is not None:
-                                # Process frame through pipeline
-                                annotated_frame, audio_data_list = process_frame(frame, pipeline_state)
-
-                                # Encode annotated frame back to base64
-                                ret, buffer = cv2.imencode('.jpg', annotated_frame,
-                                                         [cv2.IMWRITE_JPEG_QUALITY, 80])
-                                if ret:
-                                    annotated_frame_b64 = base64.b64encode(buffer).decode('utf-8')
-
-                                    # Encode audio data
-                                    audio_data = []
-                                    for audio_bytes in audio_data_list:
-                                        audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
-                                        audio_data.append(audio_b64)
-
-                                    # Send processing result back to client
-                                    await connection_manager.send_to_client(websocket, {
-                                        "type": "processing_result",
-                                        "annotated_frame": annotated_frame_b64,
-                                        "audio_data": audio_data,
-                                        "detections_count": len(detect_and_track(pipeline_state['model'], frame)),
-                                        "alerts_count": len(audio_data_list),
-                                        "timestamp": time.time()
-                                    })
-                                else:
-                                    await connection_manager.send_to_client(websocket, {
-                                        "type": "error",
-                                        "message": "Failed to encode processed frame",
-                                        "timestamp": time.time()
-                                    })
-                            else:
+                                # Process the frame
+                                annotated_frame, audio_data_list, alert_texts = process_frame(frame, pipeline_state)
+                                
+                                # Encode annotated frame
+                                _, buffer = cv2.imencode('.jpg', annotated_frame)
+                                frame_b64 = base64.b64encode(buffer).decode('utf-8')
+                                
+                                # Encode audio data
+                                audio_data = []
+                                for audio_bytes in audio_data_list:
+                                    audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+                                    audio_data.append(audio_b64)
+                                
+                                # Send processing result
                                 await connection_manager.send_to_client(websocket, {
-                                    "type": "error",
-                                    "message": "Failed to decode frame data",
+                                    "type": "processing_result",
+                                    "frame_data": frame_b64,
+                                    "audio_data": audio_data,
+                                    "alert_texts": alert_texts,
+                                    "frame_count": pipeline_state['frame_count'],
+                                    "detections_count": len(detect_and_track(pipeline_state['model'], frame)),
+                                    "alerts_count": len(audio_data_list),
                                     "timestamp": time.time()
                                 })
                         except Exception as e:
@@ -1465,12 +959,6 @@ async def websocket_camera_stream(websocket: WebSocket):
                                 "message": f"Frame processing error: {str(e)}",
                                 "timestamp": time.time()
                             })
-                    else:
-                        await connection_manager.send_to_client(websocket, {
-                            "type": "error",
-                            "message": "No frame data provided or pipeline not ready",
-                            "timestamp": time.time()
-                        })
 
             except WebSocketDisconnect:
                 break
@@ -1492,15 +980,61 @@ async def websocket_status():
         "success": True,
         "connected_clients": len(connection_manager.active_connections),
         "max_clients": MAX_WEBSOCKET_CLIENTS,
-        "streaming_active": connection_manager.streaming_active,
-        "streaming_fps": STREAMING_FPS,
-        "camera_active": camera_stream is not None and camera_stream.is_streaming if camera_stream else False
+        "streaming_active": connection_manager.streaming_active
     }
 
+@app.get("/performance/stats")
+async def get_performance_stats():
+    """Get performance statistics from logs"""
+    if not performance_logger:
+        raise HTTPException(status_code=503, detail="Performance logging not enabled")
+    
+    stats = performance_logger.get_summary_stats(last_n=100)
+    if stats is None:
+        raise HTTPException(status_code=404, detail="No performance data available")
+    
+    return {"success": True, "data": stats}
+
+@app.post("/performance/flush")
+async def flush_performance_logs():
+    """Manually flush performance logs to file"""
+    if not performance_logger:
+        raise HTTPException(status_code=503, detail="Performance logging not enabled")
+    
+    performance_logger.flush_buffer()
+    return {"success": True, "message": "Performance logs flushed"}
+
+@app.get("/performance/download")
+async def download_performance_logs():
+    """Download performance log CSV file"""
+    if not performance_logger:
+        raise HTTPException(status_code=503, detail="Performance logging not enabled")
+    
+    if not os.path.exists(PERFORMANCE_LOG_FILE):
+        raise HTTPException(status_code=404, detail="Performance log file not found")
+    
+    performance_logger.flush_buffer()
+    
+    def iterfile():
+        with open(PERFORMANCE_LOG_FILE, mode="rb") as file_like:
+            yield from file_like
+    
+    return StreamingResponse(
+        iterfile(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={PERFORMANCE_LOG_FILE}"
+        }
+    )
 
 @app.get("/")
 def index():
-    return HTMLResponse(open("websocket_camera_client.html", "r", encoding="utf-8").read())
+    """Serve HTML client interface"""
+    try:
+        return HTMLResponse(open("websocket_camera_client.html", "r", encoding="utf-8").read())
+    except FileNotFoundError:
+        return HTMLResponse("<h1>Vision Assistance API</h1><p>WebSocket client HTML file not found.</p>")
+
 # ============================================================================
 # MAIN SERVER ENTRY POINT
 # ============================================================================
@@ -1510,20 +1044,18 @@ def main():
     print("🚀 Vision Assistance HTTP Server")
     print("=" * 50)
     print(f"Server will start on http://{SERVER_HOST}:{SERVER_PORT}")
-
-    # Update YOLO model path if needed
     print(f"YOLO Model Path: {YOLO_MODEL_PATH}")
-    print("Make sure to update YOLO_MODEL_PATH in the script if needed")
+    print(f"Performance Logging: {'Enabled' if ENABLE_PERFORMANCE_LOGGING else 'Disabled'}")
+    if ENABLE_PERFORMANCE_LOGGING:
+        print(f"Log File: {PERFORMANCE_LOG_FILE}")
+    print("=" * 50)
 
-    # Start server
     uvicorn.run(
-        "vision_assist_server:app",
+        app,
         host=SERVER_HOST,
         port=SERVER_PORT,
-        log_level="info",
-        reload=False
+        log_level="info"
     )
 
 if __name__ == "__main__":
     main()
-

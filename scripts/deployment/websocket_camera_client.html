@@ -194,7 +194,7 @@
     <div class="container">
         <div class="header">
             <h1>🎥 Vision Assistance - Live Stream & Upload</h1>
-            <p>Real-time object detection with local camera and image upload</p>
+            <p>Real-time object detection with local camera and video upload</p>
         </div>
 
         <div class="controls">
@@ -206,9 +206,9 @@
             <br><br>
             <button id="startLocalCameraBtn" onclick="startLocalCamera()" disabled>📹 Start Local Camera</button>
             <button id="stopLocalCameraBtn" onclick="stopLocalCamera()" disabled>⏹️ Stop Camera</button>
-            <input type="file" id="imageUpload" accept="image/*" style="display: none;" onchange="uploadImage()">
-            <button id="uploadBtn" onclick="document.getElementById('imageUpload').click()" disabled>📸 Upload
-                Image</button>
+            <input type="file" id="videoUpload" accept="video/*" style="display: none;" onchange="uploadVideo()">
+            <button id="uploadBtn" onclick="document.getElementById('videoUpload').click()" disabled>🎬 Upload
+                Video</button>
             <button id="muteBtn" onclick="toggleMute()">🔊 Sound On</button>
         </div>
 
@@ -222,7 +222,7 @@
         <div class="content">
             <div class="video-section">
                 <div class="video-container" id="videoContainer">
-                    <div class="video-placeholder">Connect and use local camera or upload image</div>
+                    <div class="video-placeholder">Connect and use local camera or upload video</div>
                 </div>
                 <div id="frameInfo" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
             </div>
@@ -248,6 +248,11 @@
                             <span id="audioPlayedCount">0</span>
                         </div>
                     </div>
+                </div>
+
+                <div class="info-box">
+                    <h3>🔔 Latest Audio Alerts</h3>
+                    <div id="audioAlertsLog" class="log"></div>
                 </div>
 
                 <div class="info-box">
@@ -287,6 +292,14 @@
         let localVideo = null;
         let captureInterval = null;
 
+        // Video upload variables
+        let uploadedVideo = null;
+        let videoPlaybackInterval = null;
+
+        // Audio alerts tracking
+        let audioAlerts = [];
+        const MAX_AUDIO_ALERTS = 20;
+
         // Update FPS counter every second
         setInterval(() => {
             fpsDisplay.textContent = `FPS: ${fpsCounter}`;
@@ -300,6 +313,124 @@
             entry.textContent = `[${timestamp}] ${message}`;
             activityLog.appendChild(entry);
             activityLog.scrollTop = activityLog.scrollHeight;
+        }
+
+        function addAudioAlert(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const alertEntry = {
+                time: timestamp,
+                message: message
+            };
+            
+            // Add to the beginning of the array
+            audioAlerts.unshift(alertEntry);
+            
+            // Keep only the latest 20 alerts
+            if (audioAlerts.length > MAX_AUDIO_ALERTS) {
+                audioAlerts = audioAlerts.slice(0, MAX_AUDIO_ALERTS);
+            }
+            
+            // Update the audio alerts display
+            updateAudioAlertsDisplay();
+        }
+
+        function updateAudioAlertsDisplay() {
+            const audioAlertsLog = document.getElementById('audioAlertsLog');
+            audioAlertsLog.innerHTML = '';
+            
+            audioAlerts.forEach(alert => {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry log-warning';
+                entry.textContent = `[${alert.time}] ${alert.message}`;
+                audioAlertsLog.appendChild(entry);
+            });
+        }
+
+        function extractDetectionDetails(data) {
+            // PRIORITY: Use alert_texts if provided by server
+            if (data.alert_texts && Array.isArray(data.alert_texts) && data.alert_texts.length > 0) {
+                console.log('Using server-provided alert_texts:', data.alert_texts);
+                return data.alert_texts;
+            }
+            
+            const details = [];
+            
+            console.log('Extracting detection details from:', data);
+            
+            // Comprehensive search through all possible text fields
+            const textFields = [
+                'audio_messages', 'tts_messages', 'spoken_messages', 'alert_texts', 'audio_texts',
+                'detection_messages', 'alert_messages', 'speech_texts', 'voice_alerts',
+                'audio_content', 'tts_content', 'speech_content', 'alert_content',
+                'messages', 'texts', 'alerts', 'audio_alerts', 'priority_alerts'
+            ];
+            
+            // Check each field
+            textFields.forEach(field => {
+                if (data[field]) {
+                    if (Array.isArray(data[field])) {
+                        data[field].forEach(item => {
+                            if (typeof item === 'string' && item.trim()) {
+                                details.push(item.trim());
+                            } else if (item && typeof item === 'object') {
+                                // Check for text/message properties in objects
+                                const textProps = ['text', 'message', 'content', 'alert', 'speech'];
+                                textProps.forEach(prop => {
+                                    if (item[prop] && typeof item[prop] === 'string' && item[prop].trim()) {
+                                        details.push(item[prop].trim());
+                                    }
+                                });
+                            }
+                        });
+                    } else if (typeof data[field] === 'string' && data[field].trim()) {
+                        details.push(data[field].trim());
+                    }
+                }
+            });
+            
+            // Check for nested detection objects
+            if (data.detections && Array.isArray(data.detections)) {
+                data.detections.forEach(detection => {
+                    // Try various field names for detection text
+                    const detectionTextFields = ['alert_text', 'message', 'text', 'speech', 'audio_text', 'description'];
+                    detectionTextFields.forEach(field => {
+                        if (detection[field] && typeof detection[field] === 'string' && detection[field].trim()) {
+                            details.push(detection[field].trim());
+                        }
+                    });
+                    
+                    // Fallback: construct message from detection properties
+                    if (detection.class && detection.distance && detection.direction) {
+                        details.push(`${detection.class} ${detection.distance}m ${detection.direction}`);
+                    } else if (detection.label && detection.distance && detection.direction) {
+                        details.push(`${detection.label} ${detection.distance}m ${detection.direction}`);
+                    }
+                });
+            }
+            
+            // Recursively search through all object properties for any text content
+            function searchForText(obj, path = '') {
+                if (typeof obj === 'string' && obj.trim() && obj.length > 3 && 
+                    !obj.startsWith('data:') && !obj.includes('base64')) {
+                    console.log(`Found potential text at ${path}: ${obj}`);
+                    if (!details.includes(obj.trim())) {
+                        details.push(obj.trim());
+                    }
+                }
+                
+                if (typeof obj === 'object' && obj !== null) {
+                    Object.keys(obj).forEach(key => {
+                        if (key !== 'audio_data' && key !== 'frame_data' && key !== 'annotated_frame') {
+                            searchForText(obj[key], path ? `${path}.${key}` : key);
+                        }
+                    });
+                }
+            }
+            
+            searchForText(data);
+            
+            console.log('Extracted details:', details);
+            return details;
         }
 
         function updateConnectionStatus(connected) {
@@ -406,6 +537,9 @@ function connectWebSocket() {
                 captureInterval = null;
             }
 
+            // Also stop video playback if active
+            stopVideoPlayback();
+
             addLogEntry('Local camera stopped', 'warning');
             streamingStatus.textContent = 'Camera Stopped';
             streamingStatus.className = 'status-item';
@@ -435,27 +569,73 @@ function connectWebSocket() {
             }));
         }
 
-        function uploadImage() {
-            const fileInput = document.getElementById('imageUpload');
+        function uploadVideo() {
+            const fileInput = document.getElementById('videoUpload');
             const file = fileInput.files[0];
 
             if (!file || !websocket) return;
 
-            addLogEntry(`Uploading image: ${file.name}...`, 'info');
+            addLogEntry(`Uploading video: ${file.name}...`, 'info');
 
-            const reader = new FileReader();
-            reader.onload = function (e) {
-                const imageData = e.target.result.split(',')[1]; // Remove data:image/jpeg;base64,
+            // Stop any existing video playback
+            stopVideoPlayback();
 
-                websocket.send(JSON.stringify({
-                    command: 'process_frame',
-                    frame_data: imageData
-                }));
+            // Create video element for playback
+            uploadedVideo = document.createElement('video');
+            uploadedVideo.src = URL.createObjectURL(file);
+            uploadedVideo.muted = true; // Mute to avoid audio interference
+            uploadedVideo.loop = true;
 
-                addLogEntry('Image uploaded for processing', 'success');
+            uploadedVideo.onloadeddata = function() {
+                addLogEntry('Video loaded, starting frame streaming...', 'success');
+                streamingStatus.textContent = 'Video Upload Active';
+                streamingStatus.className = 'status-item status-streaming';
+                
+                // Start capturing and sending frames
+                uploadedVideo.play();
+                videoPlaybackInterval = setInterval(captureVideoFrame, 200); // 5 FPS
             };
 
-            reader.readAsDataURL(file);
+            uploadedVideo.onerror = function(error) {
+                addLogEntry(`Video upload error: ${error}`, 'error');
+            };
+        }
+
+        function stopVideoPlayback() {
+            if (videoPlaybackInterval) {
+                clearInterval(videoPlaybackInterval);
+                videoPlaybackInterval = null;
+            }
+
+            if (uploadedVideo) {
+                uploadedVideo.pause();
+                URL.revokeObjectURL(uploadedVideo.src);
+                uploadedVideo = null;
+            }
+
+            streamingStatus.textContent = 'Video Stopped';
+            streamingStatus.className = 'status-item';
+        }
+
+        function captureVideoFrame() {
+            if (!uploadedVideo || !websocket || websocket.readyState !== WebSocket.OPEN) return;
+
+            // Create canvas to capture frame
+            const canvas = document.createElement('canvas');
+            canvas.width = uploadedVideo.videoWidth || 640;
+            canvas.height = uploadedVideo.videoHeight || 480;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(uploadedVideo, 0, 0);
+
+            // Convert to base64 JPEG
+            const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+            // Send frame via WebSocket for processing
+            websocket.send(JSON.stringify({
+                command: 'process_frame',
+                frame_data: frameData
+            }));
         }
 
         function toggleMute() {
@@ -465,6 +645,9 @@ function connectWebSocket() {
         }
 
         function handleWebSocketMessage(data) {
+            // Debug log the received data structure
+            console.log('Received WebSocket data:', data);
+            
             switch (data.type) {
                 case 'connected':
                     addLogEntry(`Connected - ${data.message}`, 'success');
@@ -490,11 +673,19 @@ function connectWebSocket() {
         }
 
         function handleProcessingResult(data) {
+            // Debug: Log the complete data structure when audio alerts are present
+            if (data.audio_data && data.audio_data.length > 0) {
+                console.log('=== FULL SERVER RESPONSE WITH AUDIO ===');
+                console.log(JSON.stringify(data, null, 2));
+                console.log('=== END SERVER RESPONSE ===');
+                addLogEntry(`DEBUG: Server sent ${data.audio_data.length} audio alerts. Check console for full data structure.`, 'info');
+            }
+            
             // Handle results from image/frame processing
-            if (data.annotated_frame) {
-                // Display annotated frame
+            if (data.frame_data) {
+                // Display processed frame
                 const img = document.createElement('img');
-                img.src = `data:image/jpeg;base64,${data.annotated_frame}`;
+                img.src = `data:image/jpeg;base64,${data.frame_data}`;
                 img.onload = function () {
                     videoContainer.innerHTML = '';
                     videoContainer.appendChild(img);
@@ -509,9 +700,11 @@ function connectWebSocket() {
                 document.getElementById('alertsCount').textContent = data.alerts_count;
             }
 
-            // Play audio alerts
+            // Play audio alerts and log detection details
             if (!isMuted && data.audio_data && data.audio_data.length > 0) {
-                playAudioAlerts(data.audio_data);
+                // Extract detection information for alerts
+                const detectionDetails = extractDetectionDetails(data);
+                playAudioAlerts(data.audio_data, detectionDetails, data);
             }
 
             frameCount++;
@@ -520,6 +713,13 @@ function connectWebSocket() {
         }
 
         function handleFrameData(data) {
+            // Debug: Log the complete data structure when audio alerts are present
+            if (data.audio_data && data.audio_data.length > 0) {
+                console.log('=== FRAME DATA WITH AUDIO ===');
+                console.log(JSON.stringify(data, null, 2));
+                console.log('=== END FRAME DATA ===');
+            }
+            
             // Update FPS counter
             fpsCounter++;
 
@@ -544,11 +744,18 @@ function connectWebSocket() {
 
             // Play audio alerts if not muted
             if (!isMuted && data.audio_data && data.audio_data.length > 0) {
-                playAudioAlerts(data.audio_data);
+                // Extract detection information for alerts
+                const detectionDetails = extractDetectionDetails(data);
+                playAudioAlerts(data.audio_data, detectionDetails, data);
             }
         }
 
-        function playAudioAlerts(audioDataArray) {
+        function playAudioAlerts(audioDataArray, detectionDetails = [], fullData = null) {
+            console.log('=== PLAYING AUDIO ALERTS ===');
+            console.log('Audio count:', audioDataArray.length);
+            console.log('Detection details:', detectionDetails);
+            console.log('Alert texts from server:', fullData ? fullData.alert_texts : 'No alert_texts');
+            
             audioDataArray.forEach((audioBase64, index) => {
                 setTimeout(() => {
                     try {
@@ -567,6 +774,26 @@ function connectWebSocket() {
                         audio.play().then(() => {
                             audioPlayedCount++;
                             document.getElementById('audioPlayedCount').textContent = audioPlayedCount;
+                            
+                            // Try to get meaningful alert message
+                            let alertMessage = '';
+                            
+                            // First priority: use server-provided alert_texts
+                            if (fullData && fullData.alert_texts && fullData.alert_texts.length > index) {
+                                alertMessage = fullData.alert_texts[index];
+                            } else if (detectionDetails.length > index && detectionDetails[index]) {
+                                alertMessage = detectionDetails[index];
+                            } else if (detectionDetails.length > 0) {
+                                // Use any available detection detail
+                                alertMessage = detectionDetails[Math.min(index, detectionDetails.length - 1)];
+                            } else {
+                                // Last resort: show what we couldn't find
+                                alertMessage = `🔍 Audio #${audioPlayedCount} - Check console for server data structure`;
+                                console.warn('No detection details found. Server response structure:', fullData);
+                            }
+                            
+                            console.log(`Adding audio alert: "${alertMessage}"`);
+                            addAudioAlert(alertMessage);
                         }).catch(error => {
                             addLogEntry(`Failed to play audio: ${error}`, 'error');
                         });
@@ -593,7 +820,7 @@ function connectWebSocket() {
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function () {
             addLogEntry('Vision Assistance client loaded', 'success');
-            addLogEntry('Enter server URL and click Connect. Then use your local camera or upload images!', 'info');
+            addLogEntry('Enter server URL and click Connect. Then use your local camera or upload videos!', 'info');
 
             // Set default server URL based on current location or localhost
             const serverInput = document.getElementById('serverUrl');
