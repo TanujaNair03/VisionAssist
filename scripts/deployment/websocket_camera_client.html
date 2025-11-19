@@ -4,172 +4,188 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vision Assistance - Live & Video Test</title>
+    <title>Vision Assistance - Live Camera Stream</title>
     <style>
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: Arial, sans-serif;
             max-width: 1200px;
             margin: 0 auto;
             padding: 20px;
-            background-color: #f0f2f5;
-            color: #333;
+            background-color: #f5f5f5;
         }
 
         .container {
             background: white;
-            border-radius: 12px;
-            padding: 25px;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
 
         .header {
             text-align: center;
             margin-bottom: 30px;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 20px;
         }
 
         .controls {
             display: flex;
-            gap: 15px;
-            margin-bottom: 25px;
+            gap: 10px;
+            margin-bottom: 20px;
             flex-wrap: wrap;
-            justify-content: center;
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
+            align-items: center;
         }
 
-        input[type="text"] {
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            width: 250px;
+        .controls select,
+        .controls button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
         }
 
-        button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.2s;
-        }
-
-        .btn-primary {
+        .controls button {
             background: #007bff;
             color: white;
+            cursor: pointer;
         }
 
-        .btn-primary:hover {
+        .controls button:hover {
             background: #0056b3;
         }
 
-        .btn-danger {
-            background: #dc3545;
-            color: white;
-        }
-
-        .btn-secondary {
+        .controls button:disabled {
             background: #6c757d;
-            color: white;
-        }
-
-        .btn-success {
-            background: #28a745;
-            color: white;
-        }
-
-        button:disabled {
-            background: #ccc;
             cursor: not-allowed;
         }
 
-        .video-area {
+        .status {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .status-connected {
+            background-color: #d4edda;
+        }
+
+        .status-disconnected {
+            background-color: #f8d7da;
+        }
+
+        .status-streaming {
+            background-color: #d1ecf1;
+        }
+
+        .content {
             display: grid;
             grid-template-columns: 2fr 1fr;
             gap: 20px;
         }
 
-        .viewport {
+        .video-section {
+            text-align: center;
+        }
+
+        .video-container {
+            border: 2px solid #ddd;
+            border-radius: 10px;
             background: #000;
-            border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-            min-height: 480px;
+            min-height: 400px;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
+            position: relative;
         }
 
-        .viewport img {
-            width: 100%;
-            height: auto;
-            object-fit: contain;
-        }
-
-        /* Hidden video element for processing */
-        #sourceVideo {
-            display: none;
-        }
-
-        .stats-panel {
-            background: #fff;
-            border: 1px solid #e1e4e8;
+        .video-container img {
+            max-width: 100%;
+            max-height: 500px;
             border-radius: 8px;
-            padding: 20px;
         }
 
-        .stat-row {
+        .video-placeholder {
+            color: #666;
+            font-size: 18px;
+        }
+
+        .info-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .info-box {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+        }
+
+        .info-box h3 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .stat-item {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #eee;
+            padding: 5px 0;
+            border-bottom: 1px solid #e9ecef;
         }
 
-        .log-box {
-            height: 250px;
+        .log {
+            max-height: 300px;
             overflow-y: auto;
-            background: #1e1e1e;
-            color: #00ff00;
             font-family: monospace;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 20px;
             font-size: 12px;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
         }
 
-        .status-badge {
-            padding: 5px 10px;
-            border-radius: 20px;
-            font-size: 0.85em;
-            font-weight: bold;
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 0;
         }
 
-        .connected {
-            background: #d4edda;
-            color: #155724;
+        .log-error {
+            color: #dc3545;
         }
 
-        .disconnected {
-            background: #f8d7da;
-            color: #721c24;
+        .log-info {
+            color: #17a2b8;
         }
 
-        /* File input styling */
-        .file-input-wrapper {
-            position: relative;
-            overflow: hidden;
-            display: inline-block;
+        .log-success {
+            color: #28a745;
         }
 
-        .file-input-wrapper input[type=file] {
-            font-size: 100px;
-            position: absolute;
-            left: 0;
-            top: 0;
-            opacity: 0;
-            cursor: pointer;
+        .log-warning {
+            color: #ffc107;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            .controls {
+                justify-content: center;
+            }
         }
     </style>
 </head>
@@ -177,258 +193,648 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>👁️ Vision Assistance System</h1>
-            <p>Real-time Detection via Webcam or Video File</p>
+            <h1>🎥 Vision Assistance - Live Stream & Upload</h1>
+            <p>Real-time object detection with local camera and video upload</p>
         </div>
 
         <div class="controls">
-            <input type="text" id="serverUrl" placeholder="Server Address (e.g., localhost:8000)">
-            <button onclick="connectWebSocket()" class="btn-primary" id="connectBtn">🔌 Connect</button>
-            <button onclick="disconnectWebSocket()" class="btn-danger" id="disconnectBtn" disabled>❌ Disconnect</button>
-
-            <div style="border-left: 2px solid #ddd; margin: 0 10px;"></div>
-
-            <button onclick="startCamera()" class="btn-success" id="camBtn" disabled>📹 Start Camera</button>
-
-            <div class="file-input-wrapper">
-                <button class="btn-secondary" id="fileBtn" disabled>📂 Upload Video File</button>
-                <input type="file" id="videoUpload" accept="video/*" onchange="handleVideoUpload(this)">
-            </div>
-
-            <button onclick="stopSource()" class="btn-danger" id="stopBtn" disabled>⏹️ Stop</button>
-            <button onclick="toggleMute()" class="btn-primary" id="muteBtn">🔊 Sound On</button>
+            <input type="text" id="serverUrl" placeholder="4.188.81.64 or localhost:8000"
+                style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 200px;"
+                value="() => { if (window.location.hostname && window.location.hostname !== 'file') { return `${window.location.hostname}:8000`; } else { return '4.188.81.64'; } }">
+            <button id="connectBtn" onclick="connectWebSocket()">Connect</button>
+            <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
+            <br><br>
+            <button id="startLocalCameraBtn" onclick="startLocalCamera()" disabled>📹 Start Local Camera</button>
+            <button id="stopLocalCameraBtn" onclick="stopLocalCamera()" disabled>⏹️ Stop Camera</button>
+            <input type="file" id="videoUpload" accept="video/*" style="display: none;" onchange="uploadVideo()">
+            <button id="uploadBtn" onclick="document.getElementById('videoUpload').click()" disabled>🎬 Upload
+                Video</button>
+            <button id="muteBtn" onclick="toggleMute()">🔊 Sound On</button>
         </div>
 
-        <div style="text-align: center; margin-bottom: 15px;">
-            <span id="statusBadge" class="status-badge disconnected">Disconnected</span>
-            <span style="margin-left: 15px;">FPS: <strong id="fpsCounter">0</strong></span>
+        <div class="status">
+            <span id="connectionStatus" class="status-item status-disconnected">Disconnected</span>
+            <span id="streamingStatus" class="status-item">Not Streaming</span>
+            <span id="clientCount" class="status-item">Clients: 0</span>
+            <span id="fps" class="status-item">FPS: 0</span>
         </div>
 
-        <div class="video-area">
-            <div class="viewport" id="displayContainer">
-                <div style="color: #666;">Waiting for source...</div>
+        <div class="content">
+            <div class="video-section">
+                <div class="video-container" id="videoContainer">
+                    <div class="video-placeholder">Connect and use local camera or upload video</div>
+                </div>
+                <div id="frameInfo" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
             </div>
 
-            <div class="stats-panel">
-                <h3>Live Statistics</h3>
-                <div class="stat-row"><span>Frame:</span> <strong id="frameCount">0</strong></div>
-                <div class="stat-row"><span>Detections:</span> <strong id="detCount">0</strong></div>
-                <div class="stat-row"><span>Audio Alerts:</span> <strong id="audioCount">0</strong></div>
+            <div class="info-section">
+                <div class="info-box">
+                    <h3>📊 Statistics</h3>
+                    <div class="stats-grid" id="statsGrid">
+                        <div class="stat-item">
+                            <span>Frame Count:</span>
+                            <span id="frameCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Detections:</span>
+                            <span id="detectionsCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Alerts:</span>
+                            <span id="alertsCount">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span>Audio Played:</span>
+                            <span id="audioPlayedCount">0</span>
+                        </div>
+                    </div>
+                </div>
 
-                <div class="log-box" id="log"></div>
+                <div class="info-box">
+                    <h3>🔔 Latest Audio Alerts</h3>
+                    <div id="audioAlertsLog" class="log"></div>
+                </div>
+
+                <div class="info-box">
+                    <h3>📝 Activity Log</h3>
+                    <div id="activityLog" class="log"></div>
+                </div>
             </div>
         </div>
-
-        <video id="sourceVideo" playsinline muted width="640" height="480"></video>
     </div>
 
     <script>
-        let ws = null;
-        let processingInterval = null;
+        let websocket = null;
+        let isConnected = false;
         let isMuted = false;
         let frameCount = 0;
-        let lastTime = Date.now();
-        let framesThisSecond = 0;
+        let audioPlayedCount = 0;
+        let lastFrameTime = Date.now();
+        let fpsCounter = 0;
 
-        // DOM Elements
-        const videoSource = document.getElementById('sourceVideo');
-        const display = document.getElementById('displayContainer');
-        const logBox = document.getElementById('log');
-        const serverInput = document.getElementById('serverUrl');
+        // DOM elements
+        const connectionStatus = document.getElementById('connectionStatus');
+        const streamingStatus = document.getElementById('streamingStatus');
+        const clientCount = document.getElementById('clientCount');
+        const fpsDisplay = document.getElementById('fps');
+        const videoContainer = document.getElementById('videoContainer');
+        const frameInfo = document.getElementById('frameInfo');
+        const activityLog = document.getElementById('activityLog');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const startLocalCameraBtn = document.getElementById('startLocalCameraBtn');
+        const stopLocalCameraBtn = document.getElementById('stopLocalCameraBtn');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const muteBtn = document.getElementById('muteBtn');
 
-        // Initialize default URL
-        serverInput.value = window.location.hostname ? `${window.location.hostname}:8000` : 'localhost:8000';
+        // Local camera variables
+        let localStream = null;
+        let localVideo = null;
+        let captureInterval = null;
 
-        function log(msg) {
-            const div = document.createElement('div');
-            div.innerText = `> ${msg}`;
-            logBox.appendChild(div);
-            logBox.scrollTop = logBox.scrollHeight;
+        // Video upload variables
+        let uploadedVideo = null;
+        let videoPlaybackInterval = null;
+
+        // Audio alerts tracking
+        let audioAlerts = [];
+        const MAX_AUDIO_ALERTS = 20;
+
+        // Update FPS counter every second
+        setInterval(() => {
+            fpsDisplay.textContent = `FPS: ${fpsCounter}`;
+            fpsCounter = 0;
+        }, 1000);
+
+        function addLogEntry(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${timestamp}] ${message}`;
+            activityLog.appendChild(entry);
+            activityLog.scrollTop = activityLog.scrollHeight;
         }
 
-        function updateStatus(isConnected) {
-            const badge = document.getElementById('statusBadge');
-            badge.className = `status-badge ${isConnected ? 'connected' : 'disconnected'}`;
-            badge.innerText = isConnected ? 'Connected' : 'Disconnected';
-
-            document.getElementById('connectBtn').disabled = isConnected;
-            document.getElementById('disconnectBtn').disabled = !isConnected;
-            document.getElementById('camBtn').disabled = !isConnected;
-            document.getElementById('fileBtn').disabled = !isConnected;
-            document.getElementById('stopBtn').disabled = true; // Only enabled when source runs
-        }
-
-        function connectWebSocket() {
-            const url = serverInput.value;
-            // Auto-detect secure context
-            const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-            const wsUrl = `${protocol}${url}/ws/camera/stream`;
-
-            log(`Connecting to ${wsUrl}...`);
-            ws = new WebSocket(wsUrl);
-
-            ws.onopen = () => {
-                log("WebSocket Connected!");
-                updateStatus(true);
+        function addAudioAlert(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const alertEntry = {
+                time: timestamp,
+                message: message
             };
+            
+            // Add to the beginning of the array
+            audioAlerts.unshift(alertEntry);
+            
+            // Keep only the latest 20 alerts
+            if (audioAlerts.length > MAX_AUDIO_ALERTS) {
+                audioAlerts = audioAlerts.slice(0, MAX_AUDIO_ALERTS);
+            }
+            
+            // Update the audio alerts display
+            updateAudioAlertsDisplay();
+        }
 
-            ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'processing_result') {
-                    handleResult(data);
+        function updateAudioAlertsDisplay() {
+            const audioAlertsLog = document.getElementById('audioAlertsLog');
+            audioAlertsLog.innerHTML = '';
+            
+            audioAlerts.forEach(alert => {
+                const entry = document.createElement('div');
+                entry.className = 'log-entry log-warning';
+                entry.textContent = `[${alert.time}] ${alert.message}`;
+                audioAlertsLog.appendChild(entry);
+            });
+        }
+
+        function extractDetectionDetails(data) {
+            // PRIORITY: Use alert_texts if provided by server
+            if (data.alert_texts && Array.isArray(data.alert_texts) && data.alert_texts.length > 0) {
+                console.log('Using server-provided alert_texts:', data.alert_texts);
+                return data.alert_texts;
+            }
+            
+            const details = [];
+            
+            console.log('Extracting detection details from:', data);
+            
+            // Comprehensive search through all possible text fields
+            const textFields = [
+                'audio_messages', 'tts_messages', 'spoken_messages', 'alert_texts', 'audio_texts',
+                'detection_messages', 'alert_messages', 'speech_texts', 'voice_alerts',
+                'audio_content', 'tts_content', 'speech_content', 'alert_content',
+                'messages', 'texts', 'alerts', 'audio_alerts', 'priority_alerts'
+            ];
+            
+            // Check each field
+            textFields.forEach(field => {
+                if (data[field]) {
+                    if (Array.isArray(data[field])) {
+                        data[field].forEach(item => {
+                            if (typeof item === 'string' && item.trim()) {
+                                details.push(item.trim());
+                            } else if (item && typeof item === 'object') {
+                                // Check for text/message properties in objects
+                                const textProps = ['text', 'message', 'content', 'alert', 'speech'];
+                                textProps.forEach(prop => {
+                                    if (item[prop] && typeof item[prop] === 'string' && item[prop].trim()) {
+                                        details.push(item[prop].trim());
+                                    }
+                                });
+                            }
+                        });
+                    } else if (typeof data[field] === 'string' && data[field].trim()) {
+                        details.push(data[field].trim());
+                    }
                 }
-            };
-
-            ws.onclose = () => {
-                log("Disconnected.");
-                stopSource();
-                updateStatus(false);
-            };
-
-            ws.onerror = (e) => log(`Error: ${e.message || 'Connection failed'}`);
+            });
+            
+            // Check for nested detection objects
+            if (data.detections && Array.isArray(data.detections)) {
+                data.detections.forEach(detection => {
+                    // Try various field names for detection text
+                    const detectionTextFields = ['alert_text', 'message', 'text', 'speech', 'audio_text', 'description'];
+                    detectionTextFields.forEach(field => {
+                        if (detection[field] && typeof detection[field] === 'string' && detection[field].trim()) {
+                            details.push(detection[field].trim());
+                        }
+                    });
+                    
+                    // Fallback: construct message from detection properties
+                    if (detection.class && detection.distance && detection.direction) {
+                        details.push(`${detection.class} ${detection.distance}m ${detection.direction}`);
+                    } else if (detection.label && detection.distance && detection.direction) {
+                        details.push(`${detection.label} ${detection.distance}m ${detection.direction}`);
+                    }
+                });
+            }
+            
+            // Recursively search through all object properties for any text content
+            function searchForText(obj, path = '') {
+                if (typeof obj === 'string' && obj.trim() && obj.length > 3 && 
+                    !obj.startsWith('data:') && !obj.includes('base64')) {
+                    console.log(`Found potential text at ${path}: ${obj}`);
+                    if (!details.includes(obj.trim())) {
+                        details.push(obj.trim());
+                    }
+                }
+                
+                if (typeof obj === 'object' && obj !== null) {
+                    Object.keys(obj).forEach(key => {
+                        if (key !== 'audio_data' && key !== 'frame_data' && key !== 'annotated_frame') {
+                            searchForText(obj[key], path ? `${path}.${key}` : key);
+                        }
+                    });
+                }
+            }
+            
+            searchForText(data);
+            
+            console.log('Extracted details:', details);
+            return details;
         }
+
+        function updateConnectionStatus(connected) {
+            isConnected = connected;
+            connectionStatus.textContent = connected ? 'Connected' : 'Disconnected';
+            connectionStatus.className = `status-item ${connected ? 'status-connected' : 'status-disconnected'}`;
+
+            connectBtn.disabled = connected;
+            disconnectBtn.disabled = !connected;
+            startLocalCameraBtn.disabled = !connected;
+            stopLocalCameraBtn.disabled = !connected || !localStream;
+            uploadBtn.disabled = !connected;
+        }
+
+function connectWebSocket() {
+    if (websocket) return;
+
+    addLogEntry('Connecting to WebSocket...', 'info');
+
+    // ALWAYS use WSS + your domain
+    const wsUrl = `wss://4.188.81.64.nip.io/ws/camera/stream`;
+    addLogEntry(`Connecting to: ${wsUrl}`, 'info');
+
+    try {
+        websocket = new WebSocket(wsUrl);
+    } catch (e) {
+        addLogEntry(`WebSocket initialization error: ${e}`, 'error');
+        return;
+    }
+
+    websocket.onopen = function () {
+        addLogEntry('WebSocket connected successfully!', 'success');
+        updateConnectionStatus(true);
+    };
+
+    websocket.onmessage = function (event) {
+        try {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        } catch (e) {
+            addLogEntry(`JSON parse error: ${e}`, 'error');
+        }
+    };
+
+    websocket.onclose = function () {
+        addLogEntry('WebSocket connection closed', 'warning');
+        updateConnectionStatus(false);
+        websocket = null;
+    };
+
+    websocket.onerror = function (error) {
+        addLogEntry(`WebSocket error: ${error.message || error}`, 'error');
+    };
+}
 
         function disconnectWebSocket() {
-            if (ws) ws.close();
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+                updateConnectionStatus(false);
+                addLogEntry('Disconnected from WebSocket', 'info');
+            }
         }
 
-        // ==========================================
-        // SOURCE HANDLING (CAMERA OR VIDEO FILE)
-        // ==========================================
+        async function startLocalCamera() {
+            if (!websocket) return;
 
-        async function startCamera() {
+            addLogEntry('Starting local camera...', 'info');
+
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
+                // Request access to user's camera
+                localStream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 640, height: 480 }
                 });
-                videoSource.srcObject = stream;
-                videoSource.play();
-                startProcessing("Camera");
-            } catch (e) {
-                log(`Camera Error: ${e.message}`);
+
+                // Create video element for capture
+                localVideo = document.createElement('video');
+                localVideo.srcObject = localStream;
+                localVideo.play();
+
+                // Start capturing frames
+                captureInterval = setInterval(captureAndSendFrame, 200); // 5 FPS
+
+                addLogEntry('Local camera started successfully!', 'success');
+                streamingStatus.textContent = 'Local Camera Active';
+                streamingStatus.className = 'status-item status-streaming';
+
+                startLocalCameraBtn.disabled = true;
+                stopLocalCameraBtn.disabled = false;
+
+            } catch (error) {
+                addLogEntry(`Failed to start camera: ${error.message}`, 'error');
             }
         }
 
-        function handleVideoUpload(input) {
-            const file = input.files[0];
-            if (!file) return;
-
-            const fileUrl = URL.createObjectURL(file);
-            videoSource.srcObject = null; // Clear camera stream if any
-            videoSource.src = fileUrl;
-            videoSource.loop = true; // Loop video for testing
-            videoSource.play();
-
-            log(`Loaded video: ${file.name}`);
-            startProcessing("Video File");
-        }
-
-        function startProcessing(sourceType) {
-            document.getElementById('camBtn').disabled = true;
-            document.getElementById('fileBtn').disabled = true;
-            document.getElementById('stopBtn').disabled = false;
-
-            log(`Started processing: ${sourceType}`);
-
-            // OPTIMIZED: Send every 80ms (~12fps)
-            // This matches the server optimization
-            processingInterval = setInterval(captureAndSend, 80);
-        }
-
-        function stopSource() {
-            if (processingInterval) clearInterval(processingInterval);
-
-            // Stop video element
-            videoSource.pause();
-            if (videoSource.srcObject) {
-                videoSource.srcObject.getTracks().forEach(track => track.stop());
-                videoSource.srcObject = null;
+        function stopLocalCamera() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
             }
-            videoSource.src = "";
 
-            document.getElementById('camBtn').disabled = !ws || ws.readyState !== WebSocket.OPEN;
-            document.getElementById('fileBtn').disabled = !ws || ws.readyState !== WebSocket.OPEN;
-            document.getElementById('stopBtn').disabled = true;
-            log("Source stopped.");
+            if (captureInterval) {
+                clearInterval(captureInterval);
+                captureInterval = null;
+            }
+
+            // Also stop video playback if active
+            stopVideoPlayback();
+
+            addLogEntry('Local camera stopped', 'warning');
+            streamingStatus.textContent = 'Camera Stopped';
+            streamingStatus.className = 'status-item';
+
+            startLocalCameraBtn.disabled = false;
+            stopLocalCameraBtn.disabled = true;
         }
 
-        // ==========================================
-        // FRAME CAPTURE & SENDING
-        // ==========================================
+        function captureAndSendFrame() {
+            if (!localVideo || !websocket || websocket.readyState !== WebSocket.OPEN) return;
 
-        function captureAndSend() {
-            if (ws.readyState !== WebSocket.OPEN) return;
-
-            // 1. Create off-screen canvas
+            // Create canvas to capture frame
             const canvas = document.createElement('canvas');
-
-            // OPTIMIZATION: Force 640x480. 
-            // If you upload a 4K video, this downscales it BEFORE sending,
-            // saving massive bandwidth and server CPU.
-            canvas.width = 640;
-            canvas.height = 480;
+            canvas.width = localVideo.videoWidth || 640;
+            canvas.height = localVideo.videoHeight || 480;
 
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(videoSource, 0, 0, 640, 480);
+            ctx.drawImage(localVideo, 0, 0);
 
-            // OPTIMIZATION: Low quality JPEG for speed
-            const frameData = canvas.toDataURL('image/jpeg', 0.5).split(',')[1];
+            // Convert to base64 JPEG
+            const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-            ws.send(JSON.stringify({
+            // Send frame via WebSocket for processing
+            websocket.send(JSON.stringify({
                 command: 'process_frame',
                 frame_data: frameData
             }));
         }
 
-        // ==========================================
-        // RESULT HANDLING
-        // ==========================================
+        function uploadVideo() {
+            const fileInput = document.getElementById('videoUpload');
+            const file = fileInput.files[0];
 
-        function handleResult(data) {
-            // Update FPS
-            framesThisSecond++;
-            if (Date.now() - lastTime >= 1000) {
-                document.getElementById('fpsCounter').innerText = framesThisSecond;
-                framesThisSecond = 0;
-                lastTime = Date.now();
-            }
+            if (!file || !websocket) return;
 
-            // Update Stats
-            if (data.frame_count) document.getElementById('frameCount').innerText = data.frame_count;
-            if (data.detections_count !== undefined) document.getElementById('detCount').innerText = data.detections_count;
+            addLogEntry(`Uploading video: ${file.name}...`, 'info');
 
-            // Render Image
-            if (data.annotated_frame) {
-                const img = new Image();
-                img.src = `data:image/jpeg;base64,${data.annotated_frame}`;
-                img.style.width = '100%';
-                display.innerHTML = '';
-                display.appendChild(img);
-            }
+            // Stop any existing video playback
+            stopVideoPlayback();
 
-            // Play Audio
-            if (!isMuted && data.audio_data && data.audio_data.length > 0) {
-                document.getElementById('audioCount').innerText =
-                    parseInt(document.getElementById('audioCount').innerText) + data.audio_data.length;
+            // Create video element for playback
+            uploadedVideo = document.createElement('video');
+            uploadedVideo.src = URL.createObjectURL(file);
+            uploadedVideo.muted = true; // Mute to avoid audio interference
+            uploadedVideo.loop = true;
 
-                data.audio_data.forEach(b64 => playAudio(b64));
-            }
+            uploadedVideo.onloadeddata = function() {
+                addLogEntry('Video loaded, starting frame streaming...', 'success');
+                streamingStatus.textContent = 'Video Upload Active';
+                streamingStatus.className = 'status-item status-streaming';
+                
+                // Start capturing and sending frames
+                uploadedVideo.play();
+                videoPlaybackInterval = setInterval(captureVideoFrame, 200); // 5 FPS
+            };
+
+            uploadedVideo.onerror = function(error) {
+                addLogEntry(`Video upload error: ${error}`, 'error');
+            };
         }
 
-        function playAudio(b64) {
-            try {
-                const snd = new Audio(`data:audio/mp3;base64,${b64}`);
-                snd.play();
-            } catch (e) { console.error("Audio Error", e); }
+        function stopVideoPlayback() {
+            if (videoPlaybackInterval) {
+                clearInterval(videoPlaybackInterval);
+                videoPlaybackInterval = null;
+            }
+
+            if (uploadedVideo) {
+                uploadedVideo.pause();
+                URL.revokeObjectURL(uploadedVideo.src);
+                uploadedVideo = null;
+            }
+
+            streamingStatus.textContent = 'Video Stopped';
+            streamingStatus.className = 'status-item';
+        }
+
+        function captureVideoFrame() {
+            if (!uploadedVideo || !websocket || websocket.readyState !== WebSocket.OPEN) return;
+
+            // Create canvas to capture frame
+            const canvas = document.createElement('canvas');
+            canvas.width = uploadedVideo.videoWidth || 640;
+            canvas.height = uploadedVideo.videoHeight || 480;
+
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(uploadedVideo, 0, 0);
+
+            // Convert to base64 JPEG
+            const frameData = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
+            // Send frame via WebSocket for processing
+            websocket.send(JSON.stringify({
+                command: 'process_frame',
+                frame_data: frameData
+            }));
         }
 
         function toggleMute() {
             isMuted = !isMuted;
-            const btn = document.getElementById('muteBtn');
-            btn.innerText = isMuted ? "🔇 Sound Off" : "🔊 Sound On";
-            // Mute the source video so we only hear TTS alerts
-            videoSource.muted = true;
+            muteBtn.textContent = isMuted ? '🔇 Sound Off' : '🔊 Sound On';
+            addLogEntry(`Audio ${isMuted ? 'muted' : 'unmuted'}`, 'info');
         }
+
+        function handleWebSocketMessage(data) {
+            // Debug log the received data structure
+            console.log('Received WebSocket data:', data);
+            
+            switch (data.type) {
+                case 'connected':
+                    addLogEntry(`Connected - ${data.message}`, 'success');
+                    clientCount.textContent = `Clients: ${data.client_count}`;
+                    break;
+
+                case 'frame_processed':
+                case 'frame_data':
+                    handleFrameData(data);
+                    break;
+
+                case 'processing_result':
+                    handleProcessingResult(data);
+                    break;
+
+                case 'error':
+                    addLogEntry(`Error: ${data.message}`, 'error');
+                    break;
+
+                default:
+                    addLogEntry(`Received: ${data.type}`, 'info');
+            }
+        }
+
+        function handleProcessingResult(data) {
+            // Debug: Log the complete data structure when audio alerts are present
+            if (data.audio_data && data.audio_data.length > 0) {
+                console.log('=== FULL SERVER RESPONSE WITH AUDIO ===');
+                console.log(JSON.stringify(data, null, 2));
+                console.log('=== END SERVER RESPONSE ===');
+                addLogEntry(`DEBUG: Server sent ${data.audio_data.length} audio alerts. Check console for full data structure.`, 'info');
+            }
+            
+            // Handle results from image/frame processing
+            if (data.frame_data) {
+                // Display processed frame
+                const img = document.createElement('img');
+                img.src = `data:image/jpeg;base64,${data.frame_data}`;
+                img.onload = function () {
+                    videoContainer.innerHTML = '';
+                    videoContainer.appendChild(img);
+                };
+            }
+
+            // Update statistics
+            if (data.detections_count !== undefined) {
+                document.getElementById('detectionsCount').textContent = data.detections_count;
+            }
+            if (data.alerts_count !== undefined) {
+                document.getElementById('alertsCount').textContent = data.alerts_count;
+            }
+
+            // Play audio alerts and log detection details
+            if (!isMuted && data.audio_data && data.audio_data.length > 0) {
+                // Extract detection information for alerts
+                const detectionDetails = extractDetectionDetails(data);
+                playAudioAlerts(data.audio_data, detectionDetails, data);
+            }
+
+            frameCount++;
+            document.getElementById('frameCount').textContent = frameCount;
+            frameInfo.textContent = `Frame: ${frameCount} | Detections: ${data.detections_count || 0} | Alerts: ${data.alerts_count || 0}`;
+        }
+
+        function handleFrameData(data) {
+            // Debug: Log the complete data structure when audio alerts are present
+            if (data.audio_data && data.audio_data.length > 0) {
+                console.log('=== FRAME DATA WITH AUDIO ===');
+                console.log(JSON.stringify(data, null, 2));
+                console.log('=== END FRAME DATA ===');
+            }
+            
+            // Update FPS counter
+            fpsCounter++;
+
+            // Update frame display
+            if (data.frame_data) {
+                const img = document.createElement('img');
+                img.src = `data:image/jpeg;base64,${data.frame_data}`;
+                img.onload = function () {
+                    videoContainer.innerHTML = '';
+                    videoContainer.appendChild(img);
+                };
+            }
+
+            // Update statistics
+            frameCount = data.frame_count || frameCount;
+            document.getElementById('frameCount').textContent = frameCount;
+            document.getElementById('detectionsCount').textContent = data.detections_count || 0;
+            document.getElementById('alertsCount').textContent = data.alerts_count || 0;
+
+            // Update frame info
+            frameInfo.textContent = `Frame: ${frameCount} | Detections: ${data.detections_count || 0} | Alerts: ${data.alerts_count || 0}`;
+
+            // Play audio alerts if not muted
+            if (!isMuted && data.audio_data && data.audio_data.length > 0) {
+                // Extract detection information for alerts
+                const detectionDetails = extractDetectionDetails(data);
+                playAudioAlerts(data.audio_data, detectionDetails, data);
+            }
+        }
+
+        function playAudioAlerts(audioDataArray, detectionDetails = [], fullData = null) {
+            console.log('=== PLAYING AUDIO ALERTS ===');
+            console.log('Audio count:', audioDataArray.length);
+            console.log('Detection details:', detectionDetails);
+            console.log('Alert texts from server:', fullData ? fullData.alert_texts : 'No alert_texts');
+            
+            audioDataArray.forEach((audioBase64, index) => {
+                setTimeout(() => {
+                    try {
+                        const audioBlob = base64ToBlob(audioBase64, 'audio/mp3');
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audio = new Audio(audioUrl);
+
+                        audio.onended = () => {
+                            URL.revokeObjectURL(audioUrl);
+                        };
+
+                        audio.onerror = (error) => {
+                            addLogEntry(`Audio playback error: ${error}`, 'error');
+                        };
+
+                        audio.play().then(() => {
+                            audioPlayedCount++;
+                            document.getElementById('audioPlayedCount').textContent = audioPlayedCount;
+                            
+                            // Try to get meaningful alert message
+                            let alertMessage = '';
+                            
+                            // First priority: use server-provided alert_texts
+                            if (fullData && fullData.alert_texts && fullData.alert_texts.length > index) {
+                                alertMessage = fullData.alert_texts[index];
+                            } else if (detectionDetails.length > index && detectionDetails[index]) {
+                                alertMessage = detectionDetails[index];
+                            } else if (detectionDetails.length > 0) {
+                                // Use any available detection detail
+                                alertMessage = detectionDetails[Math.min(index, detectionDetails.length - 1)];
+                            } else {
+                                // Last resort: show what we couldn't find
+                                alertMessage = `🔍 Audio #${audioPlayedCount} - Check console for server data structure`;
+                                console.warn('No detection details found. Server response structure:', fullData);
+                            }
+                            
+                            console.log(`Adding audio alert: "${alertMessage}"`);
+                            addAudioAlert(alertMessage);
+                        }).catch(error => {
+                            addLogEntry(`Failed to play audio: ${error}`, 'error');
+                        });
+
+                    } catch (error) {
+                        addLogEntry(`Audio processing error: ${error}`, 'error');
+                    }
+                }, index * 100); // Slight delay between multiple audio alerts
+            });
+        }
+
+        function base64ToBlob(base64Data, contentType) {
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+
+            const byteArray = new Uint8Array(byteNumbers);
+            return new Blob([byteArray], { type: contentType });
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function () {
+            addLogEntry('Vision Assistance client loaded', 'success');
+            addLogEntry('Enter server URL and click Connect. Then use your local camera or upload videos!', 'info');
+
+            // Set default server URL based on current location or localhost
+            const serverInput = document.getElementById('serverUrl');
+            if (window.location.hostname && window.location.hostname !== 'file') {
+                // If served from a web server, try to use same host with port 8000
+                const defaultUrl = `${window.location.hostname}:8000`;
+                serverInput.value = defaultUrl;
+            } else {
+                // Default to Azure VM IP for file:// protocol
+                serverInput.value = '4.188.81.64';
+            }
+        });
+        document.getElementById('serverUrl').value = window.location.hostname && window.location.hostname !== 'file' ? `${window.location.hostname}:8000` : '4.188.81.64';
+
     </script>
 </body>
 
