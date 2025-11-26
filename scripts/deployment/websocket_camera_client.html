@@ -42,6 +42,10 @@
             background: white;
         }
 
+        #cameraSelect {
+            min-width: 140px;
+        }
+
         .controls button {
             background: #007bff;
             color: white;
@@ -198,12 +202,16 @@
         </div>
 
         <div class="controls">
-            <input type="text" id="serverUrl" placeholder="4.188.81.64 or localhost:8000"
+            <input type="text" id="serverUrl" placeholder="4.188.81.64 or localhost"
                 style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; width: 200px;"
-                value="() => { if (window.location.hostname && window.location.hostname !== 'file') { return `${window.location.hostname}:8000`; } else { return '4.188.81.64'; } }">
+                value="() => { if (window.location.hostname && window.location.hostname !== 'file') { return `${window.location.hostname}`; } else { return '4.188.81.64'; } }">
             <button id="connectBtn" onclick="connectWebSocket()">Connect</button>
             <button id="disconnectBtn" onclick="disconnectWebSocket()" disabled>Disconnect</button>
             <br><br>
+            <select id="cameraSelect" disabled>
+                <option value="user">📱 Front Camera</option>
+                <option value="environment">📷 Back Camera</option>
+            </select>
             <button id="startLocalCameraBtn" onclick="startLocalCamera()" disabled>📹 Start Local Camera</button>
             <button id="stopLocalCameraBtn" onclick="stopLocalCamera()" disabled>⏹️ Stop Camera</button>
             <input type="file" id="videoUpload" accept="video/*" style="display: none;" onchange="uploadVideo()">
@@ -286,6 +294,7 @@
         const stopLocalCameraBtn = document.getElementById('stopLocalCameraBtn');
         const uploadBtn = document.getElementById('uploadBtn');
         const muteBtn = document.getElementById('muteBtn');
+        const cameraSelect = document.getElementById('cameraSelect');
 
         // Local camera variables
         let localStream = null;
@@ -440,6 +449,7 @@
 
             connectBtn.disabled = connected;
             disconnectBtn.disabled = !connected;
+            cameraSelect.disabled = !connected;
             startLocalCameraBtn.disabled = !connected;
             stopLocalCameraBtn.disabled = !connected || !localStream;
             uploadBtn.disabled = !connected;
@@ -501,9 +511,16 @@ function connectWebSocket() {
             addLogEntry('Starting local camera...', 'info');
 
             try {
-                // Request access to user's camera
+                // Get selected camera facing mode
+                const facingMode = cameraSelect.value;
+                
+                // Request access to user's camera with selected facing mode
                 localStream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 640, height: 480 }
+                    video: { 
+                        width: 640, 
+                        height: 480,
+                        facingMode: facingMode
+                    }
                 });
 
                 // Create video element for capture
@@ -520,9 +537,35 @@ function connectWebSocket() {
 
                 startLocalCameraBtn.disabled = true;
                 stopLocalCameraBtn.disabled = false;
+                cameraSelect.disabled = true; // Disable switching while camera is active
 
             } catch (error) {
                 addLogEntry(`Failed to start camera: ${error.message}`, 'error');
+                // If the selected camera fails, try to fallback to any available camera
+                if (facingMode === 'environment') {
+                    addLogEntry('Back camera not available, trying front camera...', 'warning');
+                    try {
+                        localStream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: 640, height: 480, facingMode: 'user' }
+                        });
+                        
+                        localVideo = document.createElement('video');
+                        localVideo.srcObject = localStream;
+                        localVideo.play();
+                        
+                        captureInterval = setInterval(captureAndSendFrame, 200);
+                        
+                        addLogEntry('Fallback to front camera successful!', 'success');
+                        streamingStatus.textContent = 'Local Camera Active (Front)';
+                        streamingStatus.className = 'status-item status-streaming';
+                        
+                        startLocalCameraBtn.disabled = true;
+                        stopLocalCameraBtn.disabled = false;
+                        cameraSelect.disabled = true;
+                    } catch (fallbackError) {
+                        addLogEntry(`Camera fallback also failed: ${fallbackError.message}`, 'error');
+                    }
+                }
             }
         }
 
@@ -546,6 +589,7 @@ function connectWebSocket() {
 
             startLocalCameraBtn.disabled = false;
             stopLocalCameraBtn.disabled = true;
+            cameraSelect.disabled = false; // Re-enable camera selection
         }
 
         function captureAndSendFrame() {
@@ -817,23 +861,57 @@ function connectWebSocket() {
             return new Blob([byteArray], { type: contentType });
         }
 
+        // Enumerate available cameras and populate select options
+        async function enumerateCameras() {
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                // Clear existing options
+                cameraSelect.innerHTML = '';
+                
+                if (videoDevices.length === 0) {
+                    addLogEntry('No cameras detected', 'warning');
+                    cameraSelect.innerHTML = '<option value="user">📱 No cameras found</option>';
+                    return;
+                }
+                
+                // Add default options
+                cameraSelect.innerHTML = `
+                    <option value="user">📱 Front Camera</option>
+                    <option value="environment">📷 Back Camera</option>
+                `;
+                
+                // If we have specific device info, we could add more specific options
+                // This requires permission to access camera labels
+                addLogEntry(`Found ${videoDevices.length} camera(s)`, 'info');
+                
+            } catch (error) {
+                addLogEntry(`Camera enumeration failed: ${error.message}`, 'warning');
+                // Keep default options
+            }
+        }
+
         // Initialize on page load
         document.addEventListener('DOMContentLoaded', function () {
             addLogEntry('Vision Assistance client loaded', 'success');
             addLogEntry('Enter server URL and click Connect. Then use your local camera or upload videos!', 'info');
+            
+            // Enumerate available cameras
+            enumerateCameras();
 
             // Set default server URL based on current location or localhost
             const serverInput = document.getElementById('serverUrl');
             if (window.location.hostname && window.location.hostname !== 'file') {
                 // If served from a web server, try to use same host with port 8000
-                const defaultUrl = `${window.location.hostname}:8000`;
+                const defaultUrl = `${window.location.hostname}`;
                 serverInput.value = defaultUrl;
             } else {
                 // Default to Azure VM IP for file:// protocol
                 serverInput.value = '4.188.81.64';
             }
         });
-        document.getElementById('serverUrl').value = window.location.hostname && window.location.hostname !== 'file' ? `${window.location.hostname}:8000` : '4.188.81.64';
+        document.getElementById('serverUrl').value = window.location.hostname && window.location.hostname !== 'file' ? `${window.location.hostname}` : '4.188.81.64';
 
     </script>
 </body>
